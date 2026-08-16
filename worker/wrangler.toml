@@ -1,0 +1,33 @@
+name = "twitch-local-game-data-bridge"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# ── Static Dashboard Assets ───────────────────────────────────────────────────
+assets = { directory = "../dashboard", binding = "ASSETS" }
+
+
+# ── KV Namespace ──────────────────────────────────────────────────────────────
+# After creating the namespace with `wrangler kv namespace create "TLGDB_KV"`,
+# replace the placeholder IDs below with the output values.
+[[kv_namespaces]]
+binding     = "KV"
+id          = "ca65799cc94349a1aad4efda124bd3b1"
+preview_id  = "0faf442eeafa4821872443a6390d7304"
+
+# ── Environment Variables ─────────────────────────────────────────────────────
+# Tune these limits without redeploying the worker.
+[vars]
+MAX_UPLOADS_PER_SEC = "10"
+MAX_UPLOADS_PER_DAY = "50000"
+MAX_PAYLOAD_BYTES   = "524288"   # 512 KB
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# Set these once via the CLI — they are never stored in this file:
+#
+#   wrangler secret put TWITCH_CLIENT_ID
+#   wrangler secret put TWITCH_CLIENT_SECRET
+#   wrangler secret put ADMIN_SECRET
+#
+# TWITCH_CLIENT_ID     — from https://dev.twitch.tv/console/apps
+# TWITCH_CLIENT_SECRET — from the same page
+# ADMIN_SECRET         — any long random string you choose (e.g. `openssl rand -hex 32`)

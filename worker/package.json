@@ -1,0 +1,14 @@
+{
+  "name": "twitch-local-game-data-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev":    "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail":   "wrangler tail",
+    "kv:create": "wrangler kv namespace create TLGDB_KV"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Wrangler / Cloudflare Build & State Artifacts
+.wrangler/
+dist/
+.dev.vars
+
+# Temporary & Scratch Files
+scratch/
+*.log
+*.tmp
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS & Editor Metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

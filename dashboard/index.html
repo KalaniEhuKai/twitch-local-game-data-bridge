@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Game Data Bridge — Twitch Streamer Dashboard</title>
+  <meta name="description"
+    content="Send game data from your local files to your Twitch extension viewers — no software install required." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- config.js must load before the ES module so TLGDB_CONFIG is defined -->
+  <script src="config.js"></script>
+</head>
+
+<body>
+
+  <!-- ── Header ───────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-brand">
+      <div class="logo" aria-hidden="true">🎮</div>
+      <div>
+        <div class="brand-name">Local Game Data Bridge</div>
+        <div class="brand-sub">for Twitch Extensions</div>
+      </div>
+    </div>
+    <div class="header-right" id="header-user-area" hidden>
+      <span class="user-badge" id="user-name"></span>
+      <button class="btn btn-ghost btn-sm btn-danger" id="delete-data-btn" title="Data should automatically be deleted when you stop sending, but this manual option is available in case that didn't succeed.">🗑️ Delete Data</button>
+      <button class="btn btn-ghost btn-sm" id="logout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- Error banner (hidden unless an error occurs) -->
+    <div class="error-banner" id="error-banner" hidden role="alert"></div>
+
+    <!-- ── View: Loading ────────────────────────────────────────────────── -->
+    <div id="view-loading" class="view view-centered" hidden>
+      <div class="loading-card">
+        <div class="spinner" aria-label="Loading"></div>
+        <p class="loading-msg" id="loading-msg">Please wait…</p>
+      </div>
+    </div>
+
+    <!-- ── View: Auth ───────────────────────────────────────────────────── -->
+    <div id="view-auth" class="view view-centered">
+      <div class="auth-card">
+        <div class="auth-icon" aria-hidden="true">🎮</div>
+        <h1 class="auth-title">Local Game Data Bridge</h1>
+        <p class="auth-desc">
+          Connect your Twitch channel to start sending local game data to use in your extension — directly from your
+          local files, no software install needed.
+        </p>
+        <button class="btn btn-twitch" id="login-btn">
+          <svg class="twitch-icon" viewBox="0 0 24 28" aria-hidden="true">
+            <path
+              d="M2.149 0L0 6.375v19.625h6.5V30H12l4.375-4h5.375L24 22.625V0H2.149zM22 21.5l-3.5 3.5H13l-4.375 4V25H4V2.5h18V21.5zm-3-9H17v-6h2v6zm-5 0h-2v-6h2v6z" />
+          </svg>
+          Connect with Twitch
+        </button>
+        <div class="notice-list">
+          <p class="notice-item">🔒 We only request your channel identity. No access to your chat, stream, or followers.
+          </p>
+          <p class="notice-item">🌐 Uploaded data is public. <strong>DO NOT send confidential data.</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── View: Setup ──────────────────────────────────────────────────── -->
+    <div id="view-setup" class="view" hidden>
+      <div class="setup-grid">
+
+        <!-- Step 1: Game -->
+        <div class="card">
+          <div class="card-step">1</div>
+          <h2 class="card-title">Select Game</h2>
+          <p class="card-desc">Choose the game you're about to play.</p>
+          <select class="select" id="game-select" aria-label="Select game">
+            <option value="">Choose a game…</option>
+          </select>
+          <p class="card-hint" id="game-desc"></p>
+        </div>
+
+        <!-- Step 2: Files -->
+        <div class="card" id="step-files-card">
+          <div class="card-step">2</div>
+          <h2 class="card-title">Select Game Files</h2>
+          <p class="card-desc">
+            Choose your game file or folder using <strong>Browse</strong> or <strong>Drag & Drop</strong> below.
+          </p>
+          <div id="file-list" class="file-list"></div>
+
+          <p class="file-api-note" id="file-api-note" hidden>
+            ⚠️ Your browser does not support file selection. Please use Chrome, Edge, or Firefox.
+          </p>
+        </div>
+
+        <!-- Step 3: Start -->
+        <div class="card card-action">
+          <div class="card-step">3</div>
+          <h2 class="card-title">Start Sending Data</h2>
+          <p class="card-desc">
+            Keep this tab open while you play. Data is pushed to your viewers automatically
+            whenever the game file changes.
+          </p>
+
+          <div class="field-group">
+            <label class="field-label" for="poll-interval">Check Frequency</label>
+            <div class="field-row">
+              <input type="number" id="poll-interval" class="input input-number" min="1" max="60" step="0.5"
+                value="2" />
+              <span class="field-unit">seconds</span>
+            </div>
+            <p class="card-hint">How often to check local files. Uploads only occur when the file content changes.</p>
+          </div>
+
+          <button class="btn btn-primary btn-full" id="start-btn" disabled>
+            ▶ Start
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Setup Notice / Guidelines Card -->
+      <div class="card notice-card">
+        <h2 class="card-title">⚠️ Important Information & Precautions</h2>
+        <ul class="notice-bullet-list">
+          <li>
+            <strong>🌐 Public Internet Exposure:</strong> This data will be exposed on the public internet. <strong>DO
+              NOT send confidential data.</strong>
+          </li>
+          <li>
+            <strong>📶 Bandwidth & Data Usage:</strong> This may send large volumes of data frequently. <strong>DO NOT
+              use if you have internet data caps or pay per usage.</strong>
+          </li>
+          <li>
+            <strong>💾 Backup Recommendation:</strong> We recommended backing up your data files before sending. There
+            is no reason to expect that the files could be changed, but an abundance of caution is best.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── View: Live ───────────────────────────────────────────────────── -->
+    <div id="view-live" class="view" hidden>
+
+      <!-- Hero Status Card -->
+      <div id="hero-status-card" class="hero-status-card hero-status-card--ok">
+        <div class="hero-status-header">
+          <div class="hero-status-title-group">
+            <span id="hero-status-icon" class="hero-status-icon">🟢</span>
+            <div>
+              <div id="hero-status-badge" class="hero-status-badge hero-status-badge--ok">
+                <span class="pulse-dot" id="hero-pulse-dot"></span>
+                <span id="hero-status-text">Everything is working</span>
+              </div>
+              <p id="hero-status-sub" class="hero-status-sub">
+                Sending game data to your viewers…
+              </p>
+            </div>
+          </div>
+          <div class="hero-status-actions">
+            <a id="view-data-link" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" hidden>🔗 View
+              Live API Data ↗</a>
+            <button class="btn btn-secondary btn-sm" id="stop-btn">■ Stop Sending</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expandable details toggle -->
+      <button class="btn btn-ghost btn-full toggle-details-btn" id="toggle-details-btn">
+        📊 Show Statistics & Logs ▼
+      </button>
+
+      <!-- Expandable technical details panel (hidden by default) -->
+      <div id="details-panel" hidden>
+        <!-- Stats row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-uploads">0</span>
+            <span class="stat-label">Uploads</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-skipped">0</span>
+            <span class="stat-label">Skipped (no change)</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value stat-value--error" id="stat-errors">0</span>
+            <span class="stat-label">Errors</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-bytes">0 B</span>
+            <span class="stat-label">Data Sent</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-rate">—</span>
+            <span class="stat-label">Uploads / min</span>
+          </div>
+        </div>
+
+        <!-- Activity log -->
+        <div class="card card-log">
+          <h2 class="card-title">Activity Log</h2>
+          <div class="activity-log" id="activity-log" aria-live="polite" aria-atomic="false"></div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer style="text-align: center; padding: 2rem 1rem; color: var(--text-dim, #94a3b8); font-size: 0.85rem; border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: auto;">
+    <span>Twitch Local Game Data Bridge</span> &bull; 
+    <a href="admin.html" style="color: #38bdf8; text-decoration: none; font-weight: 500;">🔒 Admin Portal</a>
+  </footer>
+
+  <!-- games-bundle.js loads game definitions cleanly on file:/// and http(s) protocols -->
+  <script src="games-bundle.js?v=2"></script>
+  <script src="app.js?v=2"></script>
+</body>
+
+</html>

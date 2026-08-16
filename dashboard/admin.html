@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TLGDB Admin Portal — Twitch Local Game Data Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(15, 23, 42, 0.7);
+      --border: rgba(255, 255, 255, 0.12);
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --accent: #8b5cf6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.12) 0%, transparent 40%);
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(11, 15, 25, 0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-admin {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1280px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Auth Banner / Modal */
+    .auth-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem;
+      max-width: 480px;
+      margin: 3rem auto;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .form-group {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="password"]:focus, input[type="text"]:focus {
+      border-color: var(--primary);
+    }
+
+    .btn {
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.35);
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      border-radius: 6px;
+    }
+
+    /* Admin Dashboard Layout */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .stat-label {
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: #fff;
+    }
+
+    .stat-sub {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+    }
+
+    .table-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    th {
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .badge-active {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .badge-blocked {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .alert {
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .link-dash {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    .link-dash:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>🛡️ TLGDB</span>
+      <span class="badge-admin">Admin Portal</span>
+    </div>
+    <div class="header-actions">
+      <a href="index.html" class="link-dash">← Back to Streamer Dashboard</a>
+      <button id="logout-admin-btn" class="btn btn-secondary btn-sm" hidden>Lock Portal</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Login Card (shown when unauthenticated) -->
+    <div id="admin-auth-card" class="auth-card">
+      <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Admin Authentication</h2>
+      <p style="color: var(--text-dim); font-size: 0.9rem;">Enter your <code>ADMIN_SECRET</code> key to access system metrics and manage registered streamers.</p>
+      
+      <form id="auth-form" onsubmit="event.preventDefault(); authenticateAdmin();">
+        <div class="form-group">
+          <label for="admin-secret-input">Admin Secret Key</label>
+          <input type="password" id="admin-secret-input" placeholder="Paste ADMIN_SECRET key..." required autocomplete="current-password">
+        </div>
+        <div id="auth-error" class="alert alert-error" style="margin-top: 1rem;" hidden></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1.25rem; justify-content: center;">
+          Unlock Admin Portal
+        </button>
+      </form>
+    </div>
+
+    <!-- Admin Dashboard (shown when authenticated) -->
+    <div id="admin-dashboard-view" hidden>
+      <div id="dashboard-error" class="alert alert-error" hidden></div>
+
+      <!-- Date Selector Toolbar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; backdrop-filter: blur(12px); flex-wrap: wrap; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <span style="font-weight: 600; font-size: 0.95rem; color: #f8fafc;">📅 Select Date:</span>
+          <select id="date-quick-select" style="background: rgba(0, 0, 0, 0.4); color: #fff; border: 1px solid var(--border); padding: 0.45rem 0.8rem; border-radius: 6px; font-family: inherit; font-size: 0.88rem; outline: none; cursor: pointer;">
+          </select>
+          <input type="date" id="date-custom-input" style="background: rgba(0, 0, 0, 0.4); color: #fff; border: 1px solid var(--border); padding: 0.4rem 0.6rem; border-radius: 6px; font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer;">
+        </div>
+        <div style="font-size: 0.83rem; color: var(--text-dim);">
+          Metrics retention: <strong>14 Days</strong>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label" id="lbl-uploads">Total Uploads</div>
+          <div class="stat-value" id="stat-today-uploads">0</div>
+          <div class="stat-sub" id="stat-uploads-sub">Global server requests</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" id="lbl-bytes">Data Transferred</div>
+          <div class="stat-value" id="stat-today-bytes">0 KB</div>
+          <div class="stat-sub">Ingested payload volume</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" id="lbl-streamers">Active Streamers</div>
+          <div class="stat-value" id="stat-active-streamers">0</div>
+          <div class="stat-sub">Channels streaming data</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Registered Channels</div>
+          <div class="stat-value" id="stat-total-streamers">0</div>
+          <div class="stat-sub">API keys issued</div>
+        </div>
+      </div>
+
+      <!-- Streamers Table -->
+      <div class="table-container">
+        <div class="table-header">
+          <div class="table-title">Registered Streamers & Channels</div>
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <label style="margin: 0; display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.85rem;">
+              <input type="checkbox" id="auto-refresh-check" checked> Auto-refresh (10s)
+            </label>
+            <button id="refresh-btn" class="btn btn-secondary btn-sm">🔄 Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Channel / Streamer</th>
+              <th>Twitch ID</th>
+              <th>Registered Date</th>
+              <th id="th-uploads">Today's Uploads</th>
+              <th id="th-bytes">Today's Data</th>
+              <th>Status</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="streamers-tbody">
+            <tr>
+              <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2rem;">
+                Loading registered streamers...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
