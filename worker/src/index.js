@@ -101,7 +101,7 @@ export default {
 
       // ── Data (Twitch extension → worker) ──────────────────────────────────
       if (path.startsWith('/data')) {
-        if (method === 'GET')    return handleData(request, env, url);
+        if (method === 'GET')    return handleData(request, env, url, ctx);
         if (method === 'DELETE') return handleDataDelete(request, env, url);
       }
 
@@ -292,7 +292,7 @@ async function handleUpload(request, env, ctx, url) {
 
 // ─── Data: serve & delete stored game data ────────────────────────────────────
 
-async function handleData(request, env, url) {
+async function handleData(request, env, url, ctx) {
   // Path format: /data/:channelId/:gameId/:fileKey
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts.length < 4) {
@@ -305,6 +305,13 @@ async function handleData(request, env, url) {
   const { value, metadata } = await env.KV.getWithMetadata(dataKey);
   if (value === null) {
     return json({ error: 'No data found for this channel / game / file combination' }, 404);
+  }
+
+  // Update GET stats asynchronously
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(updateGetStats(env, channelId, gameId, value.length).catch(console.error));
+  } else {
+    updateGetStats(env, channelId, gameId, value.length).catch(console.error);
   }
 
   // Detect JSON vs plain text so the extension can parse it directly
@@ -362,11 +369,11 @@ async function handleAdmin(request, env, path, url, method) {
 
     if (channelId) {
       const stats = await env.KV.get(`stats:ch:${channelId}:${date}`, 'json');
-      return json(stats || { uploads: 0, bytesIn: 0, games: {} });
+      return json(stats || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, games: {} });
     }
 
     const global = await env.KV.get(`stats:global:${date}`, 'json');
-    return json(global || { uploads: 0, bytesIn: 0, streamers: [] });
+    return json(global || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [] });
   }
 
   // GET /admin/streamers — list all registered channels with stats for selected date
@@ -514,6 +521,31 @@ async function updateStats(env, channelId, gameId, byteCount) {
   };
   globalStats.uploads += 1;
   globalStats.bytesIn += byteCount;
+  if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
+  await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
+}
+
+async function updateGetStats(env, channelId, gameId, byteCount) {
+  const date = today();
+
+  // Per-channel daily stats (retained for 14 days)
+  const chKey = `stats:ch:${channelId}:${date}`;
+  const chStats = (await env.KV.get(chKey, 'json')) || {
+    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, lastSeen: null, games: {},
+  };
+  chStats.gets = (chStats.gets || 0) + 1;
+  chStats.bytesOut = (chStats.bytesOut || 0) + (byteCount || 0);
+  chStats.lastSeen = new Date().toISOString();
+  if (gameId) chStats.games[gameId] = (chStats.games[gameId] || 0);
+  await env.KV.put(chKey, JSON.stringify(chStats), { expirationTtl: STATS_RETENTION_TTL });
+
+  // Global daily stats (retained for 14 days)
+  const globalKey = `stats:global:${date}`;
+  const globalStats = (await env.KV.get(globalKey, 'json')) || {
+    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [],
+  };
+  globalStats.gets = (globalStats.gets || 0) + 1;
+  globalStats.bytesOut = (globalStats.bytesOut || 0) + (byteCount || 0);
   if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
   await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
 }

@@ -186,22 +186,25 @@ async function fetchAdminData() {
 }
 
 function renderAdminDashboard() {
-  const g = state.globalStats || { uploads: 0, bytesIn: 0, streamers: [] };
+  const g = state.globalStats || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [] };
   const sList = state.streamers || [];
 
   const isToday = state.selectedDate === getTodayString();
   const dateTitle = isToday ? 'Today' : state.selectedDate;
 
   setText('lbl-uploads', isToday ? "Today's Total Uploads" : `Uploads (${dateTitle})`);
+  setText('lbl-gets', isToday ? "Today's Extension GETs" : `GETs (${dateTitle})`);
   setText('lbl-bytes', isToday ? "Today's Data Transferred" : `Data Transferred (${dateTitle})`);
   setText('lbl-streamers', isToday ? "Active Streamers Today" : `Active Streamers (${dateTitle})`);
   setText('th-uploads', isToday ? "Today's Uploads" : `Uploads (${dateTitle})`);
+  setText('th-gets', isToday ? "Today's GETs" : `GETs (${dateTitle})`);
   setText('th-bytes', isToday ? "Today's Data" : `Data (${dateTitle})`);
 
-  $('stat-today-uploads').textContent = (g.uploads || 0).toLocaleString();
-  $('stat-today-bytes').textContent = formatBytes(g.bytesIn || 0);
-  $('stat-active-streamers').textContent = (g.streamers ? g.streamers.length : 0).toLocaleString();
-  $('stat-total-streamers').textContent = sList.length.toLocaleString();
+  if ($('stat-today-uploads')) $('stat-today-uploads').textContent = (g.uploads || 0).toLocaleString();
+  if ($('stat-today-gets')) $('stat-today-gets').textContent = (g.gets || 0).toLocaleString();
+  if ($('stat-today-bytes')) $('stat-today-bytes').textContent = formatBytes(g.bytesIn || 0);
+  if ($('stat-active-streamers')) $('stat-active-streamers').textContent = (g.streamers ? g.streamers.length : 0).toLocaleString();
+  if ($('stat-total-streamers')) $('stat-total-streamers').textContent = sList.length.toLocaleString();
 
   const tbody = $('streamers-tbody');
   if (!tbody) return;
@@ -209,7 +212,7 @@ function renderAdminDashboard() {
   if (sList.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2rem;">
+        <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">
           No streamers or channels registered yet.
         </td>
       </tr>
@@ -220,6 +223,7 @@ function renderAdminDashboard() {
   tbody.innerHTML = sList.map(ch => {
     const isBlocked = ch.blocked;
     const todayUploads = ch.todayStats?.uploads || 0;
+    const todayGets = ch.todayStats?.gets || 0;
     const todayBytes = ch.todayStats?.bytesIn || 0;
     const regDate = ch.registeredAt ? new Date(ch.registeredAt).toLocaleDateString() : 'Unknown';
 
@@ -233,6 +237,7 @@ function renderAdminDashboard() {
         </td>
         <td style="color: var(--text-dim); font-size: 0.85rem;">${regDate}</td>
         <td style="font-family: monospace; font-weight: 600;">${todayUploads.toLocaleString()}</td>
+        <td style="font-family: monospace; font-weight: 600; color: #38bdf8;">${todayGets.toLocaleString()}</td>
         <td style="font-family: monospace; color: var(--text-dim); font-size: 0.85rem;">${formatBytes(todayBytes)}</td>
         <td>
           ${isBlocked ? `

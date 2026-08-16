@@ -363,7 +363,12 @@
         <div class="stat-card">
           <div class="stat-label" id="lbl-uploads">Total Uploads</div>
           <div class="stat-value" id="stat-today-uploads">0</div>
-          <div class="stat-sub" id="stat-uploads-sub">Global server requests</div>
+          <div class="stat-sub" id="stat-uploads-sub">Streamer pushes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" id="lbl-gets">Extension GETs</div>
+          <div class="stat-value" id="stat-today-gets">0</div>
+          <div class="stat-sub">Viewer overlay reads</div>
         </div>
         <div class="stat-card">
           <div class="stat-label" id="lbl-bytes">Data Transferred</div>
@@ -400,6 +405,7 @@
               <th>Twitch ID</th>
               <th>Registered Date</th>
               <th id="th-uploads">Today's Uploads</th>
+              <th id="th-gets">Today's GETs</th>
               <th id="th-bytes">Today's Data</th>
               <th>Status</th>
               <th style="text-align: right;">Actions</th>
@@ -407,7 +413,7 @@
           </thead>
           <tbody id="streamers-tbody">
             <tr>
-              <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2rem;">
+              <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">
                 Loading registered streamers...
               </td>
             </tr>
