@@ -292,7 +292,7 @@ async function handleUpload(request, env, ctx, url) {
 
 // ─── Data: serve & delete stored game data ────────────────────────────────────
 
-async function handleData(request, env, url, ctx) {
+async function handleData(request, env, url) {
   // Path format: /data/:channelId/:gameId/:fileKey
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts.length < 4) {
@@ -300,18 +300,14 @@ async function handleData(request, env, url, ctx) {
   }
 
   const [, channelId, gameId, fileKey] = parts;
-  const dataKey = `data:${channelId}:${gameId}:${fileKey}`;
 
+  // Track GET request immediately for channelId
+  await updateGetStats(env, channelId, gameId, 0).catch(console.error);
+
+  const dataKey = `data:${channelId}:${gameId}:${fileKey}`;
   const { value, metadata } = await env.KV.getWithMetadata(dataKey);
   if (value === null) {
     return json({ error: 'No data found for this channel / game / file combination' }, 404);
-  }
-
-  // Update GET stats asynchronously
-  if (ctx && typeof ctx.waitUntil === 'function') {
-    ctx.waitUntil(updateGetStats(env, channelId, gameId, value.length).catch(console.error));
-  } else {
-    updateGetStats(env, channelId, gameId, value.length).catch(console.error);
   }
 
   // Detect JSON vs plain text so the extension can parse it directly
@@ -505,22 +501,30 @@ async function updateStats(env, channelId, gameId, byteCount) {
 
   // Per-channel daily stats (retained for 14 days)
   const chKey = `stats:ch:${channelId}:${date}`;
-  const chStats = (await env.KV.get(chKey, 'json')) || {
-    uploads: 0, bytesIn: 0, lastSeen: null, games: {},
+  const rawCh = await env.KV.get(chKey, 'json');
+  const chStats = rawCh || {
+    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, lastSeen: null, games: {},
   };
-  chStats.uploads += 1;
-  chStats.bytesIn += byteCount;
+  chStats.uploads = (chStats.uploads || 0) + 1;
+  chStats.bytesIn = (chStats.bytesIn || 0) + byteCount;
+  chStats.gets = chStats.gets || 0;
+  chStats.bytesOut = chStats.bytesOut || 0;
   chStats.lastSeen = new Date().toISOString();
+  chStats.games = chStats.games || {};
   chStats.games[gameId] = (chStats.games[gameId] || 0) + 1;
   await env.KV.put(chKey, JSON.stringify(chStats), { expirationTtl: STATS_RETENTION_TTL });
 
   // Global daily stats (retained for 14 days)
   const globalKey = `stats:global:${date}`;
-  const globalStats = (await env.KV.get(globalKey, 'json')) || {
-    uploads: 0, bytesIn: 0, streamers: [],
+  const rawGlobal = await env.KV.get(globalKey, 'json');
+  const globalStats = rawGlobal || {
+    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [],
   };
-  globalStats.uploads += 1;
-  globalStats.bytesIn += byteCount;
+  globalStats.uploads = (globalStats.uploads || 0) + 1;
+  globalStats.bytesIn = (globalStats.bytesIn || 0) + byteCount;
+  globalStats.gets = globalStats.gets || 0;
+  globalStats.bytesOut = globalStats.bytesOut || 0;
+  globalStats.streamers = globalStats.streamers || [];
   if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
   await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
 }
@@ -530,22 +534,29 @@ async function updateGetStats(env, channelId, gameId, byteCount) {
 
   // Per-channel daily stats (retained for 14 days)
   const chKey = `stats:ch:${channelId}:${date}`;
-  const chStats = (await env.KV.get(chKey, 'json')) || {
+  const rawCh = await env.KV.get(chKey, 'json');
+  const chStats = rawCh || {
     uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, lastSeen: null, games: {},
   };
+  chStats.uploads = chStats.uploads || 0;
+  chStats.bytesIn = chStats.bytesIn || 0;
   chStats.gets = (chStats.gets || 0) + 1;
   chStats.bytesOut = (chStats.bytesOut || 0) + (byteCount || 0);
   chStats.lastSeen = new Date().toISOString();
-  if (gameId) chStats.games[gameId] = (chStats.games[gameId] || 0);
+  chStats.games = chStats.games || {};
   await env.KV.put(chKey, JSON.stringify(chStats), { expirationTtl: STATS_RETENTION_TTL });
 
   // Global daily stats (retained for 14 days)
   const globalKey = `stats:global:${date}`;
-  const globalStats = (await env.KV.get(globalKey, 'json')) || {
+  const rawGlobal = await env.KV.get(globalKey, 'json');
+  const globalStats = rawGlobal || {
     uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [],
   };
+  globalStats.uploads = globalStats.uploads || 0;
+  globalStats.bytesIn = globalStats.bytesIn || 0;
   globalStats.gets = (globalStats.gets || 0) + 1;
   globalStats.bytesOut = (globalStats.bytesOut || 0) + (byteCount || 0);
+  globalStats.streamers = globalStats.streamers || [];
   if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
   await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
 }
