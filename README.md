@@ -17,7 +17,7 @@ File System Access API
                                                   ◄── latest game data JSON
 ```
 
-- The **streamer** opens the dashboard in Chrome or Edge — no software install.
+- The **streamer** opens the dashboard in Chrome or Edge — no software install (https://github.com/KalaniEhuKai/twitch-local-game-data-bridge).
 - The **Worker** stores the latest data per channel/game/file in Cloudflare KV.
 - The **Twitch extension** (which you write separately) fetches data from the
   Worker's `GET /data/…` endpoint whenever a viewer interacts with it.
