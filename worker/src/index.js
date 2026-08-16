@@ -152,8 +152,14 @@ async function handleAuthCallback(request, env) {
   });
 
   if (!tokenRes.ok) {
-    console.error('Twitch token exchange failed:', await tokenRes.text());
-    return json({ error: 'Twitch authentication failed' }, 401);
+    const errorText = await tokenRes.text();
+    console.error('Twitch token exchange failed:', errorText);
+    let detailedMsg = errorText;
+    try {
+      const errObj = JSON.parse(errorText);
+      detailedMsg = errObj.message || errObj.error_description || errObj.error || errorText;
+    } catch {}
+    return json({ error: `Twitch authentication failed: ${detailedMsg}` }, 401);
   }
 
   const { access_token } = await tokenRes.json();
