@@ -125,11 +125,19 @@ serve(async (req: Request) => {
         .eq('api_key', apiKey)
         .single();
 
-      // If key is not in Supabase yet (e.g. registered via Cloudflare), accept key if provided or check channels
+      // 1. Resolve channel_id from database keyRecord or incoming header / URL param
       let channelId = keyRecord?.channel_id;
       if (!channelId) {
-        // Fallback: derive channelId or accept API key
-        channelId = req.headers.get('X-Channel-Id') || 'default_channel';
+        channelId = url.searchParams.get('channelId') || req.headers.get('X-Channel-Id') || null;
+        if (channelId) {
+          // Auto-persist api_key -> channel_id mapping in Supabase for subsequent uploads
+          await supabase.from('api_keys').upsert(
+            { api_key: apiKey, channel_id: channelId },
+            { onConflict: 'api_key' }
+          );
+        } else {
+          channelId = 'default_channel';
+        }
       }
 
       const gameId = url.searchParams.get('gameId') || req.headers.get('X-Game-Id') || 'unknown';
