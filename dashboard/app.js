@@ -784,13 +784,14 @@ async function processFile(fileDef, item) {
 
     if (res.status === 429) {
       const data = await res.json().catch(() => ({}));
+      const title = data.quotaExceeded ? 'Cloudflare KV Daily Limit Reached (429)' : 'Rate limited by server (429)';
       const detail = [
         `HTTP Status: 429 Too Many Requests`,
         `Endpoint: ${uploadUrl}`,
-        `Server Reason: ${data.error || 'Upload rate limit exceeded'}`,
-        `Retry After: ${data.retryAfter ? data.retryAfter + ' seconds' : 'Wait a moment'}`
+        `Server Reason: ${data.error || 'Upload limit or rate limit reached.'}`,
+        data.retryAfter ? `Retry After: ${data.retryAfter} seconds` : `Reset Time: Quota resets at 00:00 UTC`
       ].join('\n');
-      addLog('warn', 'Rate limited by server (429)', detail);
+      addLog('warn', title, detail);
       state.stats.errors++;
       return;
     }

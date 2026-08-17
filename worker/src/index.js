@@ -116,10 +116,21 @@ export default {
         if (assetRes.status !== 404) return assetRes;
       }
 
-      return json({ error: 'Not found' }, 404);
+      return json({ error: 'Not found' }, 404, request);
     } catch (err) {
       console.error('Unhandled worker error:', err);
-      return json({ error: `Internal server error: ${err.message}` }, 500);
+      const isKvQuotaError = err.message && err.message.includes('KV put() limit exceeded');
+      if (isKvQuotaError) {
+        return json(
+          {
+            error: 'Cloudflare daily KV write limit reached (1,000 writes/day on Free Plan). Uploads will resume at 00:00 UTC, or upgrade to Workers Paid ($5/mo) for 1,000,000 writes/day.',
+            quotaExceeded: true,
+          },
+          429,
+          request
+        );
+      }
+      return json({ error: `Internal server error: ${err.message}` }, 500, request);
     }
   },
 };
@@ -268,14 +279,28 @@ async function handleUpload(request, env, ctx, url) {
 
   // 5. Store data in KV with 12-hour (43,200s) TTL safety net so abandoned data auto-expires
   const dataKey = `data:${channelId}:${gameId}:${fileKey}`;
-  await env.KV.put(dataKey, content, {
-    expirationTtl: 43_200, // 12 hours
-    metadata: {
-      updatedAt: new Date().toISOString(),
-      contentType: request.headers.get('Content-Type') || 'text/plain',
-      size: content.length,
-    },
-  });
+  try {
+    await env.KV.put(dataKey, content, {
+      expirationTtl: 43_200, // 12 hours
+      metadata: {
+        updatedAt: new Date().toISOString(),
+        contentType: request.headers.get('Content-Type') || 'text/plain',
+        size: content.length,
+      },
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('KV put() limit exceeded')) {
+      return json(
+        {
+          error: 'Cloudflare daily KV write limit reached (1,000 writes/day on Free Plan). Uploads will resume at 00:00 UTC, or upgrade to Workers Paid ($5/mo) for 1,000,000 writes/day.',
+          quotaExceeded: true,
+        },
+        429,
+        request
+      );
+    }
+    throw err;
+  }
 
   // 6. Update usage stats asynchronously — don't block the response on this
   if (ctx && typeof ctx.waitUntil === 'function') {
@@ -286,7 +311,7 @@ async function handleUpload(request, env, ctx, url) {
     updateStats(env, channelId, gameId, content.length).catch(console.error);
   }
 
-  return json({ success: true, key: dataKey, size: content.length });
+  return json({ success: true, key: dataKey, size: content.length }, 200, request);
 }
 
 // ─── Data: serve & delete stored game data ────────────────────────────────────
