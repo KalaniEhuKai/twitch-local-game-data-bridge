@@ -11,11 +11,11 @@ window.TLGDB_CONFIG = {
    *   'cloudflare' — Cloudflare Worker + KV
    *   'supabase'   — Supabase Edge Function + Postgres JSONB
    */
-  backendType: 'cloudflare',
+  backendType: 'supabase',
 
   /** Endpoint URLs */
   cloudflareWorkerUrl: 'https://twitch-local-game-data-bridge.kalani-ehu-kai.workers.dev',
-  supabaseFunctionUrl: 'https://YOUR_SUPABASE_PROJECT_REF.supabase.co/functions/v1/bridge',
+  supabaseFunctionUrl: 'https://xikiyonkixttbmdagehh.supabase.co/functions/v1/bridge',
 
   /** Active Backend URL (Evaluated dynamically) */
   get workerUrl() {
