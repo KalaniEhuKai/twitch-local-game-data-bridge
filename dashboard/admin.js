@@ -194,15 +194,18 @@ function renderAdminDashboard() {
 
   setText('lbl-uploads', isToday ? "Today's Total Uploads" : `Uploads (${dateTitle})`);
   setText('lbl-gets', isToday ? "Today's Extension GETs" : `GETs (${dateTitle})`);
-  setText('lbl-bytes', isToday ? "Today's Data Transferred" : `Data Transferred (${dateTitle})`);
+  setText('lbl-bytes-out', isToday ? "Total Egress Data (Out)" : `Egress Data (${dateTitle})`);
+  setText('lbl-bytes-in', isToday ? "Total Ingress Data (In)" : `Ingress Data (${dateTitle})`);
   setText('lbl-streamers', isToday ? "Active Streamers Today" : `Active Streamers (${dateTitle})`);
   setText('th-uploads', isToday ? "Today's Uploads" : `Uploads (${dateTitle})`);
   setText('th-gets', isToday ? "Today's GETs" : `GETs (${dateTitle})`);
-  setText('th-bytes', isToday ? "Today's Data" : `Data (${dateTitle})`);
+  setText('th-bytes-in', isToday ? "Today's Ingress (In)" : `Ingress (${dateTitle})`);
+  setText('th-bytes-out', isToday ? "Today's Egress (Out)" : `Egress (${dateTitle})`);
 
   if ($('stat-today-uploads')) $('stat-today-uploads').textContent = (g.uploads || 0).toLocaleString();
   if ($('stat-today-gets')) $('stat-today-gets').textContent = (g.gets || 0).toLocaleString();
-  if ($('stat-today-bytes')) $('stat-today-bytes').textContent = formatBytes(g.bytesIn || 0);
+  if ($('stat-today-bytes-out')) $('stat-today-bytes-out').textContent = formatBytes(g.bytesOut || 0);
+  if ($('stat-today-bytes-in')) $('stat-today-bytes-in').textContent = formatBytes(g.bytesIn || 0);
   if ($('stat-active-streamers')) $('stat-active-streamers').textContent = (g.streamers ? g.streamers.length : 0).toLocaleString();
   if ($('stat-total-streamers')) $('stat-total-streamers').textContent = sList.length.toLocaleString();
 
@@ -212,7 +215,7 @@ function renderAdminDashboard() {
   if (sList.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">
+        <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 2rem;">
           No streamers or channels registered yet.
         </td>
       </tr>
@@ -224,7 +227,8 @@ function renderAdminDashboard() {
     const isBlocked = ch.blocked;
     const todayUploads = ch.todayStats?.uploads || 0;
     const todayGets = ch.todayStats?.gets || 0;
-    const todayBytes = ch.todayStats?.bytesIn || 0;
+    const todayBytesIn = ch.todayStats?.bytesIn || 0;
+    const todayBytesOut = ch.todayStats?.bytesOut || 0;
     const regDate = ch.registeredAt ? new Date(ch.registeredAt).toLocaleDateString() : 'Unknown';
 
     return `
@@ -238,7 +242,8 @@ function renderAdminDashboard() {
         <td style="color: var(--text-dim); font-size: 0.85rem;">${regDate}</td>
         <td style="font-family: monospace; font-weight: 600;">${todayUploads.toLocaleString()}</td>
         <td style="font-family: monospace; font-weight: 600; color: #38bdf8;">${todayGets.toLocaleString()}</td>
-        <td style="font-family: monospace; color: var(--text-dim); font-size: 0.85rem;">${formatBytes(todayBytes)}</td>
+        <td style="font-family: monospace; color: #a7f3d0; font-size: 0.85rem;">${formatBytes(todayBytesIn)}</td>
+        <td style="font-family: monospace; color: #38bdf8; font-size: 0.85rem; font-weight: 600;">${formatBytes(todayBytesOut)}</td>
         <td>
           ${isBlocked ? `
             <span class="badge-status badge-blocked" title="${escapeHtml(ch.blockInfo?.reason || 'Blocked')}">
