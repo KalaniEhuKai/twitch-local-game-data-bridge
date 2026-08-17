@@ -442,21 +442,42 @@ async function handleAdmin(request, env, path, url, method) {
 }
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
-//
-// NOTE: These KV reads and writes are NOT atomic. Two concurrent requests from
-// the same channel can both read count=N, and both write count=N+1, resulting
-// in only one counted increment instead of two.
-//
-// In practice this is acceptable here because the streamer dashboard runs in a
-// single browser tab — true concurrency from one streamer is extremely unlikely.
-//
-// If you want strict atomic rate limiting (e.g. if you later allow API access
-// from multiple sources per channel), migrate these counters to a Cloudflare
-// Durable Object. One DO per channelId provides in-memory, serialized access
-// with consistent reads and writes. See:
-// https://developers.cloudflare.com/durable-objects/
+/**
+ * =============================================================================
+ * RATE LIMITING (DISABLED BY DEFAULT TO CONSERVE KV READS & WRITES)
+ * =============================================================================
+ * 
+ * To maximize Cloudflare KV quota efficiency and minimize latency, active KV
+ * rate limiting is currently bypassed. Performing KV reads and writes on every
+ * upload for rate limiting adds 2 KV reads and 2 KV writes per payload.
+ * 
+ * HOW TO RE-ENABLE RATE LIMITING IN THE FUTURE:
+ * -----------------------------------------------------------------------------
+ * Option 1: Re-enable KV Rate Limiting
+ * Uncomment the KV check block inside checkRateLimit() below. It maintains:
+ *   - A 10-second sliding window counter (`rl:win:${channelId}:${windowId}`)
+ *   - A per-day counter (`rl:day:${channelId}:${date}`)
+ * 
+ * Option 2: Cloudflare Native Rate Limiting Rules (Recommended for Production)
+ * Configure Rate Limiting Rules directly in the Cloudflare Dashboard under:
+ *   Security → WAF → Rate Limiting Rules
+ * Match URI path `/upload` with a limit (e.g. 10 requests / 10 seconds per IP/Key).
+ * This enforces rate limits at Cloudflare's edge before Worker execution,
+ * with ZERO KV reads or writes.
+ * 
+ * Option 3: Durable Objects (Strict Atomic Concurrency)
+ * Migrate counters to a Cloudflare Durable Object per channelId for in-memory,
+ * atomic rate limiting with serialized reads and writes.
+ * =============================================================================
+ */
 
 async function checkRateLimit(env, channelId) {
+  // KV Rate Limiting is currently bypassed to optimize KV write quotas.
+  // Always returns { ok: true } without performing any KV reads or writes.
+  return { ok: true };
+
+  /*
+  // --- UNCOMMENT BELOW TO RE-ENABLE KV RATE LIMITING ---
   const maxPerSec = parseInt(env.MAX_UPLOADS_PER_SEC || DEFAULTS.MAX_UPLOADS_PER_SEC);
   const maxPerDay = parseInt(env.MAX_UPLOADS_PER_DAY || DEFAULTS.MAX_UPLOADS_PER_DAY);
   const date = today();
@@ -500,6 +521,7 @@ async function checkRateLimit(env, channelId) {
   await env.KV.put(dayKey, String(dayCount + 1), { expirationTtl: 90_000 });   // expires in ~25h
 
   return { ok: true };
+  */
 }
 
 // ─── Stats Tracking ───────────────────────────────────────────────────────────
