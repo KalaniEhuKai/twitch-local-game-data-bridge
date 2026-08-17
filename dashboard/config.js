@@ -7,17 +7,23 @@
  */
 window.TLGDB_CONFIG = {
   /**
-   * The base URL of your deployed Cloudflare Worker, without a trailing slash.
-   * Example: "https://twitch-local-game-data-bridge.kalani-ehu-kai.workers.dev"
-   *      or: "https://api.yourdomain.com"  (if using a custom domain)
+   * Active backend infrastructure provider:
+   *   'cloudflare' — Cloudflare Worker + KV
+   *   'supabase'   — Supabase Edge Function + Postgres JSONB
    */
-  workerUrl: 'https://twitch-local-game-data-bridge.kalani-ehu-kai.workers.dev',
+  backendType: 'cloudflare',
+
+  /** Endpoint URLs */
+  cloudflareWorkerUrl: 'https://twitch-local-game-data-bridge.kalani-ehu-kai.workers.dev',
+  supabaseFunctionUrl: 'https://YOUR_SUPABASE_PROJECT_REF.supabase.co/functions/v1/bridge',
+
+  /** Active Backend URL (Evaluated dynamically) */
+  get workerUrl() {
+    return this.backendType === 'supabase' ? this.supabaseFunctionUrl : this.cloudflareWorkerUrl;
+  },
 
   /**
    * Your Twitch Developer Application Client ID.
-   * Find it at: https://dev.twitch.tv/console/apps
-   * This is the PUBLIC client ID — it is safe to include here.
-   * Never put your Client Secret in this file.
    */
   twitchClientId: 'r4bobxefhulol3yqbqna3dqdfce65i',
 };
