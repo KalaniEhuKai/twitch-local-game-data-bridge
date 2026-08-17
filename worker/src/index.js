@@ -80,7 +80,7 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': reqHeaders + ', Authorization, Content-Type, X-Game-Id, X-File-Key',
+          'Access-Control-Allow-Headers': reqHeaders,
           'Access-Control-Max-Age': '86400',
         },
       });
