@@ -1,6 +1,7 @@
 // =============================================================================
 // Supabase Edge Function — Twitch Local Game Data Bridge (bridge/index.ts)
-// Deno TypeScript Edge Function with PostgreSQL JSONB Telemetry Data Storage
+// Deno TypeScript Edge Function with PostgreSQL Telemetry Data Storage
+// Complete Feature Parity with Cloudflare Worker Backend
 // =============================================================================
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -8,6 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || '';
+const ADMIN_SECRET = Deno.env.get('ADMIN_SECRET') || '';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -29,6 +31,10 @@ function json(data: any, status = 200, request?: Request): Response {
     }),
     request
   );
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 serve(async (req: Request) => {
@@ -84,7 +90,6 @@ serve(async (req: Request) => {
       const channelId = user.id;
       const twitchLogin = user.login;
 
-      // Check existing channel
       const { data: existingChannel } = await supabase
         .from('channels')
         .select('key_id')
@@ -96,21 +101,56 @@ serve(async (req: Request) => {
       }
 
       const apiKey = crypto.randomUUID();
-      await supabase.from('api_keys').insert({
+      await supabase.from('api_keys').upsert({
         api_key: apiKey,
         channel_id: channelId,
         twitch_user_id: user.id,
         twitch_login: twitchLogin,
-      });
+      }, { onConflict: 'api_key' });
 
-      await supabase.from('channels').insert({
+      await supabase.from('channels').upsert({
         channel_id: channelId,
         key_id: apiKey,
         twitch_login: twitchLogin,
         twitch_user_id: user.id,
-      });
+      }, { onConflict: 'channel_id' });
 
       return json({ apiKey, channelId, twitchLogin, existing: false }, 200, req);
+    }
+
+    // ── Auth Me ─────────────────────────────────────────────────────────────
+    if (path === '/auth/me' && method === 'GET') {
+      const authHeader = req.headers.get('Authorization') || '';
+      const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      if (!apiKey) return json({ error: 'Missing Authorization header' }, 401, req);
+
+      const { data: keyRecord } = await supabase
+        .from('api_keys')
+        .select('channel_id, twitch_login, twitch_user_id')
+        .eq('api_key', apiKey)
+        .single();
+
+      if (!keyRecord) return json({ error: 'Unrecognized API key' }, 401, req);
+      return json({ channelId: keyRecord.channel_id, ...keyRecord }, 200, req);
+    }
+
+    // ── Auth Revoke ─────────────────────────────────────────────────────────
+    if (path === '/auth/revoke' && method === 'POST') {
+      const authHeader = req.headers.get('Authorization') || '';
+      const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      if (!apiKey) return json({ error: 'Missing Authorization header' }, 401, req);
+
+      const { data: keyRecord } = await supabase
+        .from('api_keys')
+        .select('channel_id')
+        .eq('api_key', apiKey)
+        .single();
+
+      if (keyRecord?.channel_id) {
+        await supabase.from('channels').delete().eq('channel_id', keyRecord.channel_id);
+      }
+      await supabase.from('api_keys').delete().eq('api_key', apiKey);
+      return json({ success: true }, 200, req);
     }
 
     // ── Upload ──────────────────────────────────────────────────────────────
@@ -125,18 +165,29 @@ serve(async (req: Request) => {
         .eq('api_key', apiKey)
         .single();
 
-      // 1. Resolve channel_id from database keyRecord or incoming header / URL param
       let channelId = keyRecord?.channel_id;
       if (!channelId) {
         channelId = url.searchParams.get('channelId') || req.headers.get('X-Channel-Id') || null;
         if (channelId) {
-          // Auto-persist api_key -> channel_id mapping in Supabase for subsequent uploads
           await supabase.from('api_keys').upsert(
             { api_key: apiKey, channel_id: channelId },
             { onConflict: 'api_key' }
           );
         } else {
           channelId = 'default_channel';
+        }
+      }
+
+      // Check if channel is blocked
+      const { data: blockedRecord } = await supabase
+        .from('blocked_channels')
+        .select('*')
+        .eq('channel_id', channelId)
+        .single();
+
+      if (blockedRecord) {
+        if (!blockedRecord.blocked_until || new Date(blockedRecord.blocked_until) > new Date()) {
+          return json({ error: 'Channel is blocked', reason: blockedRecord.reason || 'Blocked by admin' }, 403, req);
         }
       }
 
@@ -159,6 +210,23 @@ serve(async (req: Request) => {
 
       if (upsertErr) return json({ error: `Database error: ${upsertErr.message}` }, 500, req);
 
+      // Async update daily channel_stats
+      const todayStr = today();
+      const { data: existingStats } = await supabase
+        .from('channel_stats')
+        .select('uploads, bytes_in')
+        .eq('channel_id', channelId)
+        .eq('date', todayStr)
+        .single();
+
+      await supabase.from('channel_stats').upsert({
+        channel_id: channelId,
+        date: todayStr,
+        uploads: (existingStats?.uploads || 0) + 1,
+        bytes_in: (existingStats?.bytes_in || 0) + content.length,
+        last_seen: new Date().toISOString(),
+      }, { onConflict: 'channel_id,date' });
+
       return json({ success: true, key: `data:${channelId}:${gameId}:${fileKey}`, size: content.length }, 200, req);
     }
 
@@ -177,6 +245,23 @@ serve(async (req: Request) => {
         .single();
 
       if (!record) return json({ error: 'No data found' }, 404, req);
+
+      // Update viewer GET stats
+      const todayStr = today();
+      const { data: existingStats } = await supabase
+        .from('channel_stats')
+        .select('gets, bytes_out')
+        .eq('channel_id', channelId)
+        .eq('date', todayStr)
+        .single();
+
+      await supabase.from('channel_stats').upsert({
+        channel_id: channelId,
+        date: todayStr,
+        gets: (existingStats?.gets || 0) + 1,
+        bytes_out: (existingStats?.bytes_out || 0) + (record.size || record.content.length),
+        last_seen: new Date().toISOString(),
+      }, { onConflict: 'channel_id,date' });
 
       const isJson = record.content.trimStart().startsWith('{') || record.content.trimStart().startsWith('[');
       return withCors(
@@ -235,6 +320,77 @@ serve(async (req: Request) => {
 
       if (delErr) return json({ error: delErr.message }, 500, req);
       return json({ success: true, deletedCount: count || 0 }, 200, req);
+    }
+
+    // ── Admin Endpoints ────────────────────────────────────────────────────
+    if (path.startsWith('/admin')) {
+      const authHeader = req.headers.get('Authorization') || '';
+      const bearer = authHeader.replace('Bearer ', '').trim();
+      if (ADMIN_SECRET && bearer !== ADMIN_SECRET) {
+        return json({ error: 'Unauthorized' }, 401, req);
+      }
+
+      if (path === '/admin/stats' && method === 'GET') {
+        const dateStr = url.searchParams.get('date') || today();
+        const { data: statsRows } = await supabase
+          .from('channel_stats')
+          .select('*')
+          .eq('date', dateStr);
+
+        let totalUploads = 0, totalBytesIn = 0, totalGets = 0, totalBytesOut = 0;
+        const streamers: string[] = [];
+
+        (statsRows || []).forEach(r => {
+          totalUploads += r.uploads || 0;
+          totalBytesIn += r.bytes_in || 0;
+          totalGets += r.gets || 0;
+          totalBytesOut += r.bytes_out || 0;
+          if ((r.uploads || 0) > 0 || (r.gets || 0) > 0) streamers.push(r.channel_id);
+        });
+
+        return json({ uploads: totalUploads, bytesIn: totalBytesIn, gets: totalGets, bytesOut: totalBytesOut, streamers }, 200, req);
+      }
+
+      if (path === '/admin/streamers' && method === 'GET') {
+        const { data: channels } = await supabase.from('channels').select('*');
+        const { data: blockedList } = await supabase.from('blocked_channels').select('*');
+        const blockedMap = new Map((blockedList || []).map(b => [b.channel_id, b]));
+
+        const streamers = (channels || []).map(c => ({
+          channelId: c.channel_id,
+          twitchLogin: c.twitch_login,
+          twitchUserId: c.twitch_user_id,
+          registeredAt: c.registered_at,
+          blocked: blockedMap.has(c.channel_id),
+          blockInfo: blockedMap.get(c.channel_id) || null,
+        }));
+        return json(streamers, 200, req);
+      }
+
+      if (path === '/admin/block' && method === 'POST') {
+        const body = await req.json().catch(() => ({}));
+        const { channelId, reason, blockedUntil } = body;
+        if (!channelId) return json({ error: '"channelId" is required' }, 400, req);
+
+        await supabase.from('blocked_channels').upsert({
+          channel_id: channelId,
+          reason: reason || 'Manual admin block',
+          blocked_at: new Date().toISOString(),
+          blocked_until: blockedUntil || null,
+          blocked_by: 'admin',
+        }, { onConflict: 'channel_id' });
+
+        return json({ success: true, channelId, blocked: true }, 200, req);
+      }
+
+      if (path === '/admin/unblock' && method === 'POST') {
+        const body = await req.json().catch(() => ({}));
+        const { channelId } = body;
+        if (!channelId) return json({ error: '"channelId" is required' }, 400, req);
+
+        await supabase.from('blocked_channels').delete().eq('channel_id', channelId);
+        return json({ success: true, channelId, blocked: false }, 200, req);
+      }
     }
 
     return json({ error: 'Not found' }, 404, req);
