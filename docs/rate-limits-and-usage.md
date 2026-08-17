@@ -23,9 +23,8 @@ These limits are configured in `worker/wrangler.toml` and enforced in `worker/sr
 
 - **Actual Streamer Benchmark**: A streamer playing **GuildRun** generates **~450 state-change uploads in 2.25 hours** (~200 uploads / hour, or ~1 upload every 18 seconds).
 - **Capacity Calculations for 450 Uploads**:
-  - **At 3 KV Writes per upload**: 450 uploads = **1,350 KV Writes** per 2.25h stream (exceeds Cloudflare Free Tier 1,000 write limit for a single stream).
-  - **At 1 KV Write per upload**: 450 uploads = **450 KV Writes** per 2.25h stream (supports 2 full streams/day on Free Tier).
-  - **On Cloudflare Workers Paid ($5/mo)**: 1,000,000 KV Writes/day supports **~2,222 full 2.25-hour stream sessions per day**.
+  - **At 2 KV Writes per upload** (1 payload write + 1 channel stats write): 450 uploads = **900 KV Writes** per 2.25h stream (fits 1 full stream/day on Cloudflare Free Tier).
+  - **On Cloudflare Workers Paid ($5/mo)**: 1,000,000 KV Writes/day supports **~1,111 full 2.25-hour stream sessions per day** (~500,000 uploads).
 
 ---
 
