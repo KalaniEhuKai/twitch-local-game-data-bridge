@@ -47,24 +47,22 @@ const DEFAULTS = {
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': '*',
-  'Access-Control-Max-Age': '86400',
-};
-
-function withCors(response) {
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => response.headers.set(k, v));
+function withCors(response, request = null) {
+  const origin = (request && request.headers.get('Origin')) ? request.headers.get('Origin') : '*';
+  response.headers.set('Access-Control-Allow-Origin', origin);
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', '*');
+  response.headers.set('Access-Control-Max-Age', '86400');
   return response;
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, request = null) {
   return withCors(
     new Response(JSON.stringify(data), {
       status,
       headers: { 'Content-Type': 'application/json' },
-    })
+    }),
+    request
   );
 }
 
@@ -74,11 +72,12 @@ export default {
   async fetch(request, env, ctx) {
     // Handle CORS pre-flight for all routes
     if (request.method === 'OPTIONS') {
+      const origin = request.headers.get('Origin') || '*';
       const reqHeaders = request.headers.get('Access-Control-Request-Headers') || '*';
       return new Response(null, {
         status: 204,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': reqHeaders,
           'Access-Control-Max-Age': '86400',
