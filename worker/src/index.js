@@ -364,12 +364,18 @@ async function handleAdmin(request, env, path, url, method) {
     const channelId = url.searchParams.get('channelId');
 
     if (channelId) {
-      const stats = await env.KV.get(`stats:ch:${channelId}:${date}`, 'json');
-      return json(stats || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, games: {} });
+      const chStats = (await env.KV.get(`stats:ch:${channelId}:${date}`, 'json')) || {};
+      const getStats = (await env.KV.get(`stats:gets:${channelId}:${date}`, 'json')) || {};
+      const gets = Math.max(chStats.gets || 0, getStats.gets || 0);
+      const bytesOut = Math.max(chStats.bytesOut || 0, getStats.bytesOut || 0);
+      return json({ uploads: 0, bytesIn: 0, games: {}, ...chStats, gets, bytesOut });
     }
 
-    const global = await env.KV.get(`stats:global:${date}`, 'json');
-    return json(global || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [] });
+    const globalStats = (await env.KV.get(`stats:global:${date}`, 'json')) || {};
+    const globalGets = (await env.KV.get(`stats:global_gets:${date}`, 'json')) || {};
+    const gets = Math.max(globalStats.gets || 0, globalGets.gets || 0);
+    const bytesOut = Math.max(globalStats.bytesOut || 0, globalGets.bytesOut || 0);
+    return json({ uploads: 0, bytesIn: 0, streamers: [], ...globalStats, gets, bytesOut });
   }
 
   // GET /admin/streamers — list all registered channels with stats for selected date
@@ -381,7 +387,11 @@ async function handleAdmin(request, env, path, url, method) {
         const data = await env.KV.get(name, 'json');
         const channelId = name.replace('channel:', '');
         const blocked = await env.KV.get(`blocked:${channelId}`, 'json');
-        const todayStats = await env.KV.get(`stats:ch:${channelId}:${date}`, 'json');
+        const chStats = (await env.KV.get(`stats:ch:${channelId}:${date}`, 'json')) || {};
+        const getStats = (await env.KV.get(`stats:gets:${channelId}:${date}`, 'json')) || {};
+        const gets = Math.max(chStats.gets || 0, getStats.gets || 0);
+        const bytesOut = Math.max(chStats.bytesOut || 0, getStats.bytesOut || 0);
+        const todayStats = { ...chStats, gets, bytesOut };
         return { channelId, ...data, blocked: !!blocked, blockInfo: blocked || null, todayStats };
       })
     );
@@ -499,31 +509,27 @@ const STATS_RETENTION_TTL = 14 * 86400; // 14 days (1,209,600 seconds)
 async function updateStats(env, channelId, gameId, byteCount) {
   const date = today();
 
-  // Per-channel daily stats (retained for 14 days)
+  // Per-channel daily upload stats (retained for 14 days)
   const chKey = `stats:ch:${channelId}:${date}`;
   const rawCh = await env.KV.get(chKey, 'json');
   const chStats = rawCh || {
-    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, lastSeen: null, games: {},
+    uploads: 0, bytesIn: 0, lastSeen: null, games: {},
   };
   chStats.uploads = (chStats.uploads || 0) + 1;
   chStats.bytesIn = (chStats.bytesIn || 0) + byteCount;
-  chStats.gets = chStats.gets || 0;
-  chStats.bytesOut = chStats.bytesOut || 0;
   chStats.lastSeen = new Date().toISOString();
   chStats.games = chStats.games || {};
   chStats.games[gameId] = (chStats.games[gameId] || 0) + 1;
   await env.KV.put(chKey, JSON.stringify(chStats), { expirationTtl: STATS_RETENTION_TTL });
 
-  // Global daily stats (retained for 14 days)
+  // Global daily upload stats (retained for 14 days)
   const globalKey = `stats:global:${date}`;
   const rawGlobal = await env.KV.get(globalKey, 'json');
   const globalStats = rawGlobal || {
-    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [],
+    uploads: 0, bytesIn: 0, streamers: [],
   };
   globalStats.uploads = (globalStats.uploads || 0) + 1;
   globalStats.bytesIn = (globalStats.bytesIn || 0) + byteCount;
-  globalStats.gets = globalStats.gets || 0;
-  globalStats.bytesOut = globalStats.bytesOut || 0;
   globalStats.streamers = globalStats.streamers || [];
   if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
   await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
@@ -532,33 +538,32 @@ async function updateStats(env, channelId, gameId, byteCount) {
 async function updateGetStats(env, channelId, gameId, byteCount) {
   const date = today();
 
-  // Per-channel daily stats (retained for 14 days)
-  const chKey = `stats:ch:${channelId}:${date}`;
-  const rawCh = await env.KV.get(chKey, 'json');
-  const chStats = rawCh || {
-    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, lastSeen: null, games: {},
-  };
-  chStats.uploads = chStats.uploads || 0;
-  chStats.bytesIn = chStats.bytesIn || 0;
-  chStats.gets = (chStats.gets || 0) + 1;
-  chStats.bytesOut = (chStats.bytesOut || 0) + (byteCount || 0);
-  chStats.lastSeen = new Date().toISOString();
-  chStats.games = chStats.games || {};
-  await env.KV.put(chKey, JSON.stringify(chStats), { expirationTtl: STATS_RETENTION_TTL });
+  // 1. Per-channel daily GET stats (dedicated key to prevent upload race conditions)
+  const getKey = `stats:gets:${channelId}:${date}`;
+  const rawGets = await env.KV.get(getKey, 'json');
+  const getStats = rawGets || { gets: 0, bytesOut: 0 };
 
-  // Global daily stats (retained for 14 days)
-  const globalKey = `stats:global:${date}`;
-  const rawGlobal = await env.KV.get(globalKey, 'json');
-  const globalStats = rawGlobal || {
-    uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [],
-  };
-  globalStats.uploads = globalStats.uploads || 0;
-  globalStats.bytesIn = globalStats.bytesIn || 0;
-  globalStats.gets = (globalStats.gets || 0) + 1;
-  globalStats.bytesOut = (globalStats.bytesOut || 0) + (byteCount || 0);
-  globalStats.streamers = globalStats.streamers || [];
-  if (!globalStats.streamers.includes(channelId)) globalStats.streamers.push(channelId);
-  await env.KV.put(globalKey, JSON.stringify(globalStats), { expirationTtl: STATS_RETENTION_TTL });
+  // Also read legacy chStats in case gets were previously stored there
+  const legacyCh = (await env.KV.get(`stats:ch:${channelId}:${date}`, 'json')) || {};
+  const currentGets = Math.max(legacyCh.gets || 0, getStats.gets || 0);
+  const currentBytesOut = Math.max(legacyCh.bytesOut || 0, getStats.bytesOut || 0);
+
+  getStats.gets = currentGets + 1;
+  getStats.bytesOut = currentBytesOut + (byteCount || 0);
+  await env.KV.put(getKey, JSON.stringify(getStats), { expirationTtl: STATS_RETENTION_TTL });
+
+  // 2. Global daily GET stats
+  const globalGetKey = `stats:global_gets:${date}`;
+  const rawGlobalGets = await env.KV.get(globalGetKey, 'json');
+  const globalGets = rawGlobalGets || { gets: 0, bytesOut: 0 };
+
+  const legacyGlobal = (await env.KV.get(`stats:global:${date}`, 'json')) || {};
+  const currentGlobalGets = Math.max(legacyGlobal.gets || 0, globalGets.gets || 0);
+  const currentGlobalBytesOut = Math.max(legacyGlobal.bytesOut || 0, globalGets.bytesOut || 0);
+
+  globalGets.gets = currentGlobalGets + 1;
+  globalGets.bytesOut = currentGlobalBytesOut + (byteCount || 0);
+  await env.KV.put(globalGetKey, JSON.stringify(globalGets), { expirationTtl: STATS_RETENTION_TTL });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
