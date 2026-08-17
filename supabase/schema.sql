@@ -68,6 +68,14 @@ ALTER TABLE public.blocked_channels ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public read to game_data" ON public.game_data FOR SELECT USING (true);
 CREATE POLICY "Allow service role full access to game_data" ON public.game_data FOR ALL USING (true);
 
+-- 6. Automated 60-Day Data Retention Cleanup Function
+CREATE OR REPLACE FUNCTION public.cleanup_old_channel_stats()
+RETURNS void AS $$
+BEGIN
+  DELETE FROM public.channel_stats WHERE date < (CURRENT_DATE - INTERVAL '60 days');
+END;
+$$ LANGUAGE plpgsql;
+
 -- Allow public read/write to channel_stats for edge function tracking
 CREATE POLICY "Allow public read to channel_stats" ON public.channel_stats FOR SELECT USING (true);
 CREATE POLICY "Allow service role full access to channel_stats" ON public.channel_stats FOR ALL USING (true);

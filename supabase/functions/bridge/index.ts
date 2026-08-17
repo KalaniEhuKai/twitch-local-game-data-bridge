@@ -220,8 +220,12 @@ serve(async (req: Request) => {
 
       if (upsertErr) return json({ error: `Database error: ${upsertErr.message}` }, 500, req);
 
-      // Async update daily channel_stats
+      // Async update daily channel_stats & prune records older than 60 days
       const todayStr = today();
+      const sixtyDaysAgoStr = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      await supabase.from('channel_stats').delete().lt('date', sixtyDaysAgoStr);
+
       const { data: existingStats } = await supabase
         .from('channel_stats')
         .select('uploads, bytes_in')
