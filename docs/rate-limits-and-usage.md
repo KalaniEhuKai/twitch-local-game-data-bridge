@@ -19,34 +19,42 @@ These limits are configured in `worker/wrangler.toml` and enforced in `worker/sr
 
 ---
 
-## 1.1 Empirical Telemetry Baseline (GuildRun)
+## 1.1 Capacity Benchmark Scenarios
 
-- **Actual Streamer Benchmark**: A streamer playing **GuildRun** generates **~450 state-change uploads in 2.25 hours** (~200 uploads / hour, or ~1 upload every 18 seconds).
-- **Capacity Calculations for 450 Uploads**:
-  - **At 2 KV Writes per upload** (1 payload write + 1 channel stats write): 450 uploads = **900 KV Writes** per 2.25h stream (fits 1 full stream/day on Cloudflare Free Tier).
-  - **On Cloudflare Workers Paid ($5/mo)**: 1,000,000 KV Writes/day supports **~1,111 full 2.25-hour stream sessions per day** (~500,000 uploads).
+### Scenario A: Intensive Game Upload Baseline (1 Upload every 2 seconds)
+- **Upload Rate**: 1 upload / 2 sec = 1,800 uploads / hr → **14,400 uploads / 8-hr stream session**.
+- **Monthly Streamer Load (40 hrs / mo)**: **312,000 uploads / month**.
+- **KV Writes (at 2 KV Writes per upload)**: 312,000 × 2 = **624,000 KV Writes / month** (under 1M included monthly writes).
+
+### Scenario B: 1,000-Viewer Stream Extension Usage
+- **Active Extension Viewers (25% adoption)**: 250 active extension viewers.
+- **Interaction Rate**: 1 hover / 5 min = 12 checks / viewer / hr → **3,000 viewer requests / hr**.
+- **Monthly Viewer Load (40 hrs / mo)**: **120,000 viewer requests / month**.
+- **KV Operations per Viewer Request**: 2 KV Reads + 1 KV Write (updates GET counter).
+- **Monthly Viewer Usage**: **240,000 KV Reads / month** + **120,000 KV Writes / month**.
+
+### Scenario C: Combined Monthly Heavy Streamer + 1,000 Viewers
+- **Total KV Writes**: 624,000 (uploads) + 120,000 (viewer stats) = **744,000 KV Writes / month** (74.4% of 1M included).
+- **Total KV Reads**: **240,000 KV Reads / month** (2.4% of 10M included).
+- **Total HTTP Requests**: **432,000 requests / month** (4.3% of 10M included).
+- **Total Monthly Cost**: **$5.00 / month flat** ($0 in overage fees).
 
 ---
 
-## 2. Cloudflare Quotas & Capacity Planning
+## 2. Cloudflare Quotas & Official Pricing
 
-### Free Tier Limits (Default)
+Official Reference: [Cloudflare Workers KV Pricing Docs](https://developers.cloudflare.com/kv/platform/pricing/)
 
-| Cloudflare Resource | Free Tier Quota | Notes |
-| :--- | :--- | :--- |
-| **Worker Requests** | **100,000 requests / day** | Combined GETs (viewers), POSTs (streamers), and Dashboard requests |
-| **KV Read Operations** | **100,000 reads / day** | Twitch overlay viewer data fetches (`GET /data/...`) |
-| **KV Write Operations** | **1,000 writes / day** | Streamer data uploads (`POST /upload`) |
+### Free Plan vs Paid Plan ($5/month Base)
 
----
-
-### Paid Tier Limits (Cloudflare Workers Paid — $5/month)
-
-If total streamer upload frequency exceeds 1,000 writes/day across active channels, upgrading to Cloudflare Workers Paid increases limits to:
-
-- **KV Writes**: **1,000,000 writes / day**
-- **KV Reads**: **10,000,000 reads / day**
-- **Worker Requests**: **10,000,000 requests / month**
+| Cloudflare Resource | Free Plan (Daily Limits) | Paid Plan ($5/mo Base) | Overage Rate (After Base Included) |
+| :--- | :--- | :--- | :--- |
+| **KV Writes** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million writes** |
+| **KV Reads** | **100,000 / day** | **10,000,000 / month included** | **$0.50 per 1 million reads** |
+| **KV Deletes** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million deletes** |
+| **List Requests** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million lists** |
+| **Worker Requests** | **100,000 / day** | **10,000,000 / month included** | **$0.30 per 1 million requests** |
+| **Stored Data** | **1 GB total** | **1 GB included** | **$0.50 / GB-month** |
 
 ---
 
