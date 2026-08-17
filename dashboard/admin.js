@@ -62,7 +62,7 @@ function populateDateSelector() {
   quickSelect.innerHTML = '';
   const todayObj = new Date();
 
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 60; i++) {
     const d = new Date(todayObj);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().slice(0, 10);
