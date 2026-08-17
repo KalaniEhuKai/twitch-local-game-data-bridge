@@ -581,7 +581,10 @@ async function deleteUploadedData(gameId = null, fileKey = null, keepalive = fal
   try {
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${state.apiKey}` },
+      headers: {
+        'Authorization': `Bearer ${state.apiKey}`,
+        'X-Channel-Id': state.channelId || '',
+      },
       keepalive,
     });
     return res.ok;

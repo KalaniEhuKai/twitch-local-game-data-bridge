@@ -192,6 +192,51 @@ serve(async (req: Request) => {
       );
     }
 
+    // ── Data Delete ────────────────────────────────────────────────────────
+    if (path.startsWith('/data') && method === 'DELETE') {
+      const authHeader = req.headers.get('Authorization') || '';
+      const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      const headerChannelId = req.headers.get('X-Channel-Id') || url.searchParams.get('channelId');
+
+      let channelId: string | null = null;
+      if (apiKey) {
+        const { data: keyRecord } = await supabase
+          .from('api_keys')
+          .select('channel_id')
+          .eq('api_key', apiKey)
+          .single();
+        channelId = keyRecord?.channel_id || headerChannelId;
+      } else {
+        channelId = headerChannelId;
+      }
+
+      if (!channelId) return json({ error: 'Could not resolve channel_id for delete' }, 400, req);
+
+      const parts = path.split('/').filter(Boolean);
+      // DELETE /data/:gameId/:fileKey
+      if (parts.length >= 3) {
+        const [, gameId, fileKey] = parts;
+        const { error: delErr } = await supabase
+          .from('game_data')
+          .delete()
+          .eq('channel_id', channelId)
+          .eq('game_id', gameId)
+          .eq('file_key', fileKey);
+
+        if (delErr) return json({ error: delErr.message }, 500, req);
+        return json({ success: true, deletedCount: 1 }, 200, req);
+      }
+
+      // DELETE /data -> delete all game_data rows for this channel_id
+      const { error: delErr, count } = await supabase
+        .from('game_data')
+        .delete({ count: 'exact' })
+        .eq('channel_id', channelId);
+
+      if (delErr) return json({ error: delErr.message }, 500, req);
+      return json({ success: true, deletedCount: count || 0 }, 200, req);
+    }
+
     return json({ error: 'Not found' }, 404, req);
   } catch (err: any) {
     return json({ error: `Internal server error: ${err.message}` }, 500, req);
