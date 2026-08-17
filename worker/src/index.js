@@ -92,15 +92,15 @@ export default {
     try {
       // ── Auth ──────────────────────────────────────────────────────────────
       if (path === '/auth/callback' && method === 'POST') return handleAuthCallback(request, env);
-      if (path === '/auth/me'       && method === 'GET')  return handleAuthMe(request, env);
-      if (path === '/auth/revoke'   && method === 'POST') return handleAuthRevoke(request, env);
+      if (path === '/auth/me' && method === 'GET') return handleAuthMe(request, env);
+      if (path === '/auth/revoke' && method === 'POST') return handleAuthRevoke(request, env);
 
       // ── Upload (streamer → worker) ─────────────────────────────────────────
       if (path === '/upload' && method === 'POST') return handleUpload(request, env, ctx, url);
 
       // ── Data (Twitch extension → worker) ──────────────────────────────────
       if (path.startsWith('/data')) {
-        if (method === 'GET')    return handleData(request, env, url, ctx);
+        if (method === 'GET') return handleData(request, env, url, ctx);
         if (method === 'DELETE') return handleDataDelete(request, env, url);
       }
 
@@ -168,7 +168,7 @@ async function handleAuthCallback(request, env) {
     try {
       const errObj = JSON.parse(errorText);
       detailedMsg = errObj.message || errObj.error_description || errObj.error || errorText;
-    } catch {}
+    } catch { }
     return json({ error: `Twitch authentication failed: ${detailedMsg}` }, 401);
   }
 
@@ -263,7 +263,7 @@ async function handleUpload(request, env, ctx, url) {
     return json({ error: `Payload too large. Maximum is ${maxBytes} bytes.` }, 413);
   }
 
-  const gameId  = url?.searchParams.get('gameId')  || request.headers.get('X-Game-Id')  || 'unknown';
+  const gameId = url?.searchParams.get('gameId') || request.headers.get('X-Game-Id') || 'unknown';
   const fileKey = url?.searchParams.get('fileKey') || request.headers.get('X-File-Key') || 'default';
 
   let content;
@@ -292,7 +292,7 @@ async function handleUpload(request, env, ctx, url) {
     if (err.message && err.message.includes('KV put() limit exceeded')) {
       return json(
         {
-          error: 'Cloudflare daily KV write limit reached (1,000 writes/day on Free Plan). Uploads will resume at 00:00 UTC, or upgrade to Workers Paid ($5/mo) for 1,000,000 writes/day.',
+          error: 'Cloudflare daily KV write limit reached (dashboard infrastructure has reached usage limit for the day).',
           quotaExceeded: true,
         },
         429,
