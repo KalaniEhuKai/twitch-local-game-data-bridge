@@ -176,14 +176,21 @@ async function handleOAuthCallback(code) {
   history.replaceState({}, '', location.pathname); // clean URL
 
   try {
-    const res = await fetch(`${WORKER_URL}/auth/callback`, {
+    let res = await fetch(`${WORKER_URL}/auth/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code,
-        redirect_uri: redirectUri,
-      }),
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
     });
+
+    // Fallback: If primary backend auth fails (e.g. Supabase missing secret or 404), try Cloudflare Worker Auth endpoint
+    if (!res.ok && CONFIG.cloudflareWorkerUrl && WORKER_URL !== CONFIG.cloudflareWorkerUrl) {
+      console.warn('[TLGDB] Primary auth endpoint failed, falling back to Cloudflare auth endpoint...');
+      res = await fetch(`${CONFIG.cloudflareWorkerUrl}/auth/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, redirect_uri: redirectUri }),
+      });
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

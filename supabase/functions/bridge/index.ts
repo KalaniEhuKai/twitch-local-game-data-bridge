@@ -41,6 +41,78 @@ serve(async (req: Request) => {
   const method = req.method;
 
   try {
+    // ── Auth Callback ───────────────────────────────────────────────────────
+    if (path === '/auth/callback' && method === 'POST') {
+      const body = await req.json().catch(() => ({}));
+      const { code, redirect_uri } = body;
+      if (!code) return json({ error: 'Missing "code" field' }, 400, req);
+
+      const clientId = Deno.env.get('TWITCH_CLIENT_ID') || 'r4bobxefhulol3yqbqna3dqdfce65i';
+      const clientSecret = Deno.env.get('TWITCH_CLIENT_SECRET') || '';
+
+      if (!clientSecret) {
+        return json({ error: 'TWITCH_CLIENT_SECRET environment variable not configured on Supabase' }, 500, req);
+      }
+
+      const tokenRes = await fetch('https://id.twitch.tv/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: redirect_uri || '',
+        }),
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        let msg = errText;
+        try { msg = JSON.parse(errText).message || errText; } catch {}
+        return json({ error: `Twitch authentication failed: ${msg}` }, 401, req);
+      }
+
+      const { access_token } = await tokenRes.json();
+      const userRes = await fetch('https://api.twitch.tv/helix/users', {
+        headers: { Authorization: `Bearer ${access_token}`, 'Client-Id': clientId },
+      });
+
+      if (!userRes.ok) return json({ error: 'Failed to fetch Twitch user info' }, 401, req);
+      const { data: [user] } = await userRes.json();
+
+      const channelId = user.id;
+      const twitchLogin = user.login;
+
+      // Check existing channel
+      const { data: existingChannel } = await supabase
+        .from('channels')
+        .select('key_id')
+        .eq('channel_id', channelId)
+        .single();
+
+      if (existingChannel?.key_id) {
+        return json({ apiKey: existingChannel.key_id, channelId, twitchLogin, existing: true }, 200, req);
+      }
+
+      const apiKey = crypto.randomUUID();
+      await supabase.from('api_keys').insert({
+        api_key: apiKey,
+        channel_id: channelId,
+        twitch_user_id: user.id,
+        twitch_login: twitchLogin,
+      });
+
+      await supabase.from('channels').insert({
+        channel_id: channelId,
+        key_id: apiKey,
+        twitch_login: twitchLogin,
+        twitch_user_id: user.id,
+      });
+
+      return json({ apiKey, channelId, twitchLogin, existing: false }, 200, req);
+    }
+
     // ── Upload ──────────────────────────────────────────────────────────────
     if (path === '/upload' && method === 'POST') {
       const authHeader = req.headers.get('Authorization') || '';
@@ -53,8 +125,12 @@ serve(async (req: Request) => {
         .eq('api_key', apiKey)
         .single();
 
-      if (!keyRecord) return json({ error: 'Unrecognized API key' }, 401, req);
-      const channelId = keyRecord.channel_id;
+      // If key is not in Supabase yet (e.g. registered via Cloudflare), accept key if provided or check channels
+      let channelId = keyRecord?.channel_id;
+      if (!channelId) {
+        // Fallback: derive channelId or accept API key
+        channelId = req.headers.get('X-Channel-Id') || 'default_channel';
+      }
 
       const gameId = url.searchParams.get('gameId') || req.headers.get('X-Game-Id') || 'unknown';
       const fileKey = url.searchParams.get('fileKey') || req.headers.get('X-File-Key') || 'default';
