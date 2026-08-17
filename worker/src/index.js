@@ -590,7 +590,7 @@ async function checkRateLimit(env, channelId) {
 
 // ─── Stats Tracking ───────────────────────────────────────────────────────────
 
-const STATS_RETENTION_TTL = 14 * 86400; // 14 days (1,209,600 seconds)
+const STATS_RETENTION_TTL = 60 * 86400; // 60 days (5,184,000 seconds)
 
 async function updateStats(env, channelId, gameId, byteCount) {
   const date = today();
