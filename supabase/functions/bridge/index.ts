@@ -173,6 +173,10 @@ serve(async (req: Request) => {
             { api_key: apiKey, channel_id: channelId },
             { onConflict: 'api_key' }
           );
+          await supabase.from('channels').upsert(
+            { channel_id: channelId, key_id: apiKey, twitch_user_id: channelId, twitch_login: `channel_${channelId}` },
+            { onConflict: 'channel_id' }
+          );
         } else {
           channelId = 'default_channel';
         }
@@ -352,18 +356,75 @@ serve(async (req: Request) => {
       }
 
       if (path === '/admin/streamers' && method === 'GET') {
+        const dateStr = url.searchParams.get('date') || today();
         const { data: channels } = await supabase.from('channels').select('*');
+        const { data: keys } = await supabase.from('api_keys').select('*');
+        const { data: statsList } = await supabase.from('channel_stats').select('*').eq('date', dateStr);
+        const { data: activeGameData } = await supabase.from('game_data').select('channel_id');
         const { data: blockedList } = await supabase.from('blocked_channels').select('*');
-        const blockedMap = new Map((blockedList || []).map(b => [b.channel_id, b]));
 
-        const streamers = (channels || []).map(c => ({
-          channelId: c.channel_id,
-          twitchLogin: c.twitch_login,
-          twitchUserId: c.twitch_user_id,
-          registeredAt: c.registered_at,
-          blocked: blockedMap.has(c.channel_id),
-          blockInfo: blockedMap.get(c.channel_id) || null,
-        }));
+        const channelMap = new Map<string, any>();
+
+        (channels || []).forEach(c => {
+          channelMap.set(c.channel_id, {
+            channelId: c.channel_id,
+            twitchLogin: c.twitch_login || `channel_${c.channel_id}`,
+            twitchUserId: c.twitch_user_id || c.channel_id,
+            registeredAt: c.registered_at || new Date().toISOString(),
+          });
+        });
+
+        (keys || []).forEach(k => {
+          if (k.channel_id && !channelMap.has(k.channel_id)) {
+            channelMap.set(k.channel_id, {
+              channelId: k.channel_id,
+              twitchLogin: k.twitch_login || `channel_${k.channel_id}`,
+              twitchUserId: k.twitch_user_id || k.channel_id,
+              registeredAt: k.created_at || new Date().toISOString(),
+            });
+          }
+        });
+
+        (statsList || []).forEach(s => {
+          if (s.channel_id && !channelMap.has(s.channel_id)) {
+            channelMap.set(s.channel_id, {
+              channelId: s.channel_id,
+              twitchLogin: `channel_${s.channel_id}`,
+              twitchUserId: s.channel_id,
+              registeredAt: s.last_seen || new Date().toISOString(),
+            });
+          }
+        });
+
+        (activeGameData || []).forEach(g => {
+          if (g.channel_id && !channelMap.has(g.channel_id)) {
+            channelMap.set(g.channel_id, {
+              channelId: g.channel_id,
+              twitchLogin: `channel_${g.channel_id}`,
+              twitchUserId: g.channel_id,
+              registeredAt: new Date().toISOString(),
+            });
+          }
+        });
+
+        const blockedMap = new Map((blockedList || []).map(b => [b.channel_id, b]));
+        const statsMap = new Map((statsList || []).map(s => [s.channel_id, s]));
+
+        const streamers = Array.from(channelMap.values()).map(ch => {
+          const s = statsMap.get(ch.channelId);
+          return {
+            ...ch,
+            blocked: blockedMap.has(ch.channelId),
+            blockInfo: blockedMap.get(ch.channelId) || null,
+            todayStats: {
+              uploads: s?.uploads || 0,
+              gets: s?.gets || 0,
+              bytesIn: s?.bytes_in || 0,
+              bytesOut: s?.bytes_out || 0,
+            },
+          };
+        });
+
         return json(streamers, 200, req);
       }
 
