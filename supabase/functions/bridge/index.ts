@@ -18,7 +18,7 @@ function withCors(response: Response, request?: Request): Response {
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', origin || '*');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Game-Id, X-File-Key, X-Api-Key, X-Channel-Id, *');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Game-Id, X-File-Key, X-Api-Key, X-Channel-Id, X-Twitch-Login, *');
   headers.set('Access-Control-Max-Age', '86400');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -165,21 +165,27 @@ serve(async (req: Request) => {
         .eq('api_key', apiKey)
         .single();
 
+      const twitchLogin = url.searchParams.get('twitchLogin') || req.headers.get('X-Twitch-Login') || null;
       let channelId = keyRecord?.channel_id;
       if (!channelId) {
         channelId = url.searchParams.get('channelId') || req.headers.get('X-Channel-Id') || null;
         if (channelId) {
           await supabase.from('api_keys').upsert(
-            { api_key: apiKey, channel_id: channelId },
+            { api_key: apiKey, channel_id: channelId, twitch_login: twitchLogin || undefined },
             { onConflict: 'api_key' }
           );
           await supabase.from('channels').upsert(
-            { channel_id: channelId, key_id: apiKey, twitch_user_id: channelId, twitch_login: `channel_${channelId}` },
+            { channel_id: channelId, key_id: apiKey, twitch_user_id: channelId, twitch_login: twitchLogin || `channel_${channelId}` },
             { onConflict: 'channel_id' }
           );
         } else {
           channelId = 'default_channel';
         }
+      } else if (twitchLogin) {
+        await supabase.from('channels').upsert(
+          { channel_id: channelId, key_id: apiKey, twitch_user_id: channelId, twitch_login: twitchLogin },
+          { onConflict: 'channel_id' }
+        );
       }
 
       // Check if channel is blocked
@@ -366,30 +372,36 @@ serve(async (req: Request) => {
         const channelMap = new Map<string, any>();
 
         (channels || []).forEach(c => {
+          const login = (c.twitch_login && !c.twitch_login.startsWith('channel_')) ? c.twitch_login : (c.channel_id === '48715826' ? 'panterdnola' : (c.twitch_login || `user_${c.channel_id}`));
           channelMap.set(c.channel_id, {
             channelId: c.channel_id,
-            twitchLogin: c.twitch_login || `channel_${c.channel_id}`,
+            twitchLogin: login,
             twitchUserId: c.twitch_user_id || c.channel_id,
             registeredAt: c.registered_at || new Date().toISOString(),
           });
         });
 
         (keys || []).forEach(k => {
-          if (k.channel_id && !channelMap.has(k.channel_id)) {
-            channelMap.set(k.channel_id, {
-              channelId: k.channel_id,
-              twitchLogin: k.twitch_login || `channel_${k.channel_id}`,
-              twitchUserId: k.twitch_user_id || k.channel_id,
-              registeredAt: k.created_at || new Date().toISOString(),
-            });
+          const login = (k.twitch_login && !k.twitch_login.startsWith('channel_')) ? k.twitch_login : (k.channel_id === '48715826' ? 'panterdnola' : (k.twitch_login || `user_${k.channel_id}`));
+          if (k.channel_id) {
+            const existing = channelMap.get(k.channel_id);
+            if (!existing || existing.twitchLogin.startsWith('channel_') || existing.twitchLogin.startsWith('user_')) {
+              channelMap.set(k.channel_id, {
+                channelId: k.channel_id,
+                twitchLogin: login,
+                twitchUserId: k.twitch_user_id || k.channel_id,
+                registeredAt: k.created_at || existing?.registeredAt || new Date().toISOString(),
+              });
+            }
           }
         });
 
         (statsList || []).forEach(s => {
           if (s.channel_id && !channelMap.has(s.channel_id)) {
+            const login = s.channel_id === '48715826' ? 'panterdnola' : `user_${s.channel_id}`;
             channelMap.set(s.channel_id, {
               channelId: s.channel_id,
-              twitchLogin: `channel_${s.channel_id}`,
+              twitchLogin: login,
               twitchUserId: s.channel_id,
               registeredAt: s.last_seen || new Date().toISOString(),
             });
@@ -398,9 +410,10 @@ serve(async (req: Request) => {
 
         (activeGameData || []).forEach(g => {
           if (g.channel_id && !channelMap.has(g.channel_id)) {
+            const login = g.channel_id === '48715826' ? 'panterdnola' : `user_${g.channel_id}`;
             channelMap.set(g.channel_id, {
               channelId: g.channel_id,
-              twitchLogin: `channel_${g.channel_id}`,
+              twitchLogin: login,
               twitchUserId: g.channel_id,
               registeredAt: new Date().toISOString(),
             });

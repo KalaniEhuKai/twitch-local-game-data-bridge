@@ -754,13 +754,14 @@ async function processFile(fileDef, item) {
   }
 
   // ── Upload to Worker / Supabase ─────────────────────────────────────────────
-  const uploadUrl = `${WORKER_URL}/upload?gameId=${encodeURIComponent(state.selectedGame.id)}&fileKey=${encodeURIComponent(fileDef.key)}&channelId=${encodeURIComponent(state.channelId || '')}`;
+  const uploadUrl = `${WORKER_URL}/upload?gameId=${encodeURIComponent(state.selectedGame.id)}&fileKey=${encodeURIComponent(fileDef.key)}&channelId=${encodeURIComponent(state.channelId || '')}&twitchLogin=${encodeURIComponent(state.twitchLogin || '')}`;
   try {
     const res = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${state.apiKey}`,
         'X-Channel-Id': state.channelId || '',
+        'X-Twitch-Login': state.twitchLogin || '',
         'Content-Type': state.selectedGame.parse ? 'application/json' : 'text/plain',
       },
       body: payload,
