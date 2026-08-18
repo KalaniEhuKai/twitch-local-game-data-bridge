@@ -60,6 +60,14 @@ function populateDateSelector() {
   if (!quickSelect) return;
 
   quickSelect.innerHTML = '';
+
+  // 1. Add "Last 24 Hours (Rolling)" option
+  const opt24h = document.createElement('option');
+  opt24h.value = '24h';
+  opt24h.textContent = '⏱️ Last 24 Hours (Rolling)';
+  if (state.selectedDate === '24h') opt24h.selected = true;
+  quickSelect.appendChild(opt24h);
+
   const todayObj = new Date();
 
   for (let i = 0; i < 60; i++) {
@@ -70,8 +78,8 @@ function populateDateSelector() {
     opt.value = dateStr;
 
     let label = dateStr;
-    if (i === 0) label = `Today (${dateStr})`;
-    else if (i === 1) label = `Yesterday (${dateStr})`;
+    if (i === 0) label = `Today (${dateStr} UTC)`;
+    else if (i === 1) label = `Yesterday (${dateStr} UTC)`;
     else label = `${i} Days Ago (${dateStr})`;
 
     opt.textContent = label;
@@ -79,7 +87,7 @@ function populateDateSelector() {
     quickSelect.appendChild(opt);
   }
 
-  if (customInput) {
+  if (customInput && state.selectedDate !== '24h') {
     customInput.value = state.selectedDate;
   }
 }
@@ -189,18 +197,19 @@ function renderAdminDashboard() {
   const g = state.globalStats || { uploads: 0, bytesIn: 0, gets: 0, bytesOut: 0, streamers: [] };
   const sList = state.streamers || [];
 
+  const is24h = state.selectedDate === '24h';
   const isToday = state.selectedDate === getTodayString();
-  const dateTitle = isToday ? 'Today' : state.selectedDate;
+  const dateTitle = is24h ? 'Last 24 Hours' : (isToday ? 'Today' : state.selectedDate);
 
-  setText('lbl-uploads', isToday ? "Today's Total Uploads" : `Uploads (${dateTitle})`);
-  setText('lbl-gets', isToday ? "Today's Extension GETs" : `GETs (${dateTitle})`);
-  setText('lbl-bytes-out', isToday ? "Total Egress Data (Out)" : `Egress Data (${dateTitle})`);
-  setText('lbl-bytes-in', isToday ? "Total Ingress Data (In)" : `Ingress Data (${dateTitle})`);
-  setText('lbl-streamers', isToday ? "Active Streamers Today" : `Active Streamers (${dateTitle})`);
-  setText('th-uploads', isToday ? "Today's Uploads" : `Uploads (${dateTitle})`);
-  setText('th-gets', isToday ? "Today's GETs" : `GETs (${dateTitle})`);
-  setText('th-bytes-in', isToday ? "Today's Ingress (In)" : `Ingress (${dateTitle})`);
-  setText('th-bytes-out', isToday ? "Today's Egress (Out)" : `Egress (${dateTitle})`);
+  setText('lbl-uploads', is24h ? "Last 24h Total Uploads" : (isToday ? "Today's Total Uploads" : `Uploads (${dateTitle})`));
+  setText('lbl-gets', is24h ? "Last 24h Extension GETs" : (isToday ? "Today's Extension GETs" : `GETs (${dateTitle})`));
+  setText('lbl-bytes-out', is24h ? "Last 24h Egress Data (Out)" : (isToday ? "Total Egress Data (Out)" : `Egress Data (${dateTitle})`));
+  setText('lbl-bytes-in', is24h ? "Last 24h Ingress Data (In)" : (isToday ? "Total Ingress Data (In)" : `Ingress Data (${dateTitle})`));
+  setText('lbl-streamers', is24h ? "Active Streamers (24h)" : (isToday ? "Active Streamers Today" : `Active Streamers (${dateTitle})`));
+  setText('th-uploads', is24h ? "24h Uploads" : (isToday ? "Today's Uploads" : `Uploads (${dateTitle})`));
+  setText('th-gets', is24h ? "24h GETs" : (isToday ? "Today's GETs" : `GETs (${dateTitle})`));
+  setText('th-bytes-in', is24h ? "24h Ingress (In)" : (isToday ? "Today's Ingress (In)" : `Ingress (${dateTitle})`));
+  setText('th-bytes-out', is24h ? "24h Egress (Out)" : (isToday ? "Today's Egress (Out)" : `Egress (${dateTitle})`));
 
   if ($('stat-today-uploads')) $('stat-today-uploads').textContent = (g.uploads || 0).toLocaleString();
   if ($('stat-today-gets')) $('stat-today-gets').textContent = (g.gets || 0).toLocaleString();
