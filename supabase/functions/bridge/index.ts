@@ -346,10 +346,16 @@ serve(async (req: Request) => {
 
       if (path === '/admin/stats' && method === 'GET') {
         const dateStr = url.searchParams.get('date') || today();
+        const datesToQuery = [dateStr];
+        if (dateStr === today()) {
+          const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          datesToQuery.push(yesterdayStr);
+        }
+
         const { data: statsRows } = await supabase
           .from('channel_stats')
           .select('*')
-          .eq('date', dateStr);
+          .in('date', datesToQuery);
 
         let totalUploads = 0, totalBytesIn = 0, totalGets = 0, totalBytesOut = 0;
         const streamers: string[] = [];
@@ -359,7 +365,9 @@ serve(async (req: Request) => {
           totalBytesIn += r.bytes_in || 0;
           totalGets += r.gets || 0;
           totalBytesOut += r.bytes_out || 0;
-          if ((r.uploads || 0) > 0 || (r.gets || 0) > 0) streamers.push(r.channel_id);
+          if (((r.uploads || 0) > 0 || (r.gets || 0) > 0) && !streamers.includes(r.channel_id)) {
+            streamers.push(r.channel_id);
+          }
         });
 
         return json({ uploads: totalUploads, bytesIn: totalBytesIn, gets: totalGets, bytesOut: totalBytesOut, streamers }, 200, req);
@@ -367,9 +375,15 @@ serve(async (req: Request) => {
 
       if (path === '/admin/streamers' && method === 'GET') {
         const dateStr = url.searchParams.get('date') || today();
+        const datesToQuery = [dateStr];
+        if (dateStr === today()) {
+          const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          datesToQuery.push(yesterdayStr);
+        }
+
         const { data: channels } = await supabase.from('channels').select('*');
         const { data: keys } = await supabase.from('api_keys').select('*');
-        const { data: statsList } = await supabase.from('channel_stats').select('*').eq('date', dateStr);
+        const { data: statsList } = await supabase.from('channel_stats').select('*').in('date', datesToQuery);
         const { data: activeGameData } = await supabase.from('game_data').select('channel_id');
         const { data: blockedList } = await supabase.from('blocked_channels').select('*');
 
