@@ -1,76 +1,77 @@
-# System Rate Limits, Quotas & Usage Documentation
+# System Infrastructure, Quotas & Usage Documentation
 
-This document outlines the system rate limits, payload size constraints, security controls, and Cloudflare quota limits for the **Twitch Local Game Data Bridge** and its associated admin/streamer dashboard.
+This document outlines the architecture, rate limits, data quotas, zero-overage protections, and capacity math for the **Twitch Local Game Data Bridge** across both **Supabase** (primary database & edge functions) and **Cloudflare Workers** (static frontend hosting & fallback worker).
 
 ---
 
-## 1. App-Enforced Safety Caps & Rate Limits
+## 1. Dual-Backend Architecture Overview
 
-These limits are configured in `worker/wrangler.toml` and enforced in `worker/src/index.js`:
+The system supports a dual-backend toggle configured in [`dashboard/config.js`](file:///c:/Users/family/.gemini/antigravity-ide/scratch/twitch-game-data/dashboard/config.js) and [`overlay.js`](file:///c:/Users/family/.gemini/antigravity-ide/scratch/GuildRunDataDisplayTwitchExtension/overlay.js):
 
-| Control / Metric | Default Limit | Behavior / Error Response |
+| Provider | Components Used | Purpose / Benefits |
 | :--- | :--- | :--- |
-| **Max Payload Size** | **512 KB** (`524,288` bytes) | Returns `HTTP 413 Payload Too Large` if POST upload exceeds 512 KB |
-| **Burst Rate Limit** | **10 uploads / sec** | Returns `HTTP 429 Rate Limit Exceeded` (sliding 10-second window, max 100 uploads/10s) |
-| **Daily Streamer Cap** | **50,000 uploads / day** per channel | System automatically blocks channel until midnight UTC |
-| **Game Data TTL** | **12 hours** (`43,200` seconds) | Abandoned or inactive streamer game data auto-expires from Cloudflare KV |
-| **Stats Retention TTL** | **14 days** (`1,209,600` seconds) | Per-channel and global daily metrics auto-cleanup |
-| **Dashboard Auto-Refresh** | **10 seconds** | Admin dashboard polls `/admin/stats` and `/admin/streamers` |
+| **Supabase** *(Active Backend)* | Edge Functions + PostgreSQL (`UPSERT` JSONB) | **$0 / Zero Credit Card Required**, Native **Spend Cap** (hard $0 overage guarantee), zero DB bloat via PostgreSQL `UPSERT`, 5 GB free egress. |
+| **Cloudflare** *(Static & Fallback)* | Cloudflare Workers Assets + KV Namespace | **100% Free** static website hosting for Streamer Dashboard (`tlgdb-dashboard`), auth fallback, and optional backup Worker. |
 
 ---
 
-## 1.1 Capacity Benchmark Scenarios
+## 2. Infrastructure Quotas & Cost Guarantee
 
-### Scenario A: Intensive Game Upload Baseline (1 Upload every 2 seconds)
-- **Upload Rate**: 1 upload / 2 sec = 1,800 uploads / hr → **14,400 uploads / 8-hr stream session**.
-- **Monthly Streamer Load (40 hrs / mo)**: **312,000 uploads / month**.
-- **KV Writes (at 2 KV Writes per upload)**: 312,000 × 2 = **624,000 KV Writes / month** (under 1M included monthly writes).
+### 2.1 Supabase Tier Limits & Spend Cap
 
-### Scenario B: 1,000-Viewer Stream Extension Usage
-- **Active Extension Viewers (25% adoption)**: 250 active extension viewers.
-- **Interaction Rate**: 1 hover / 5 min = 12 checks / viewer / hr → **3,000 viewer requests / hr**.
-- **Monthly Viewer Load (40 hrs / mo)**: **120,000 viewer requests / month**.
-- **KV Operations per Viewer Request**: 2 KV Reads + 1 KV Write (updates GET counter).
-- **Monthly Viewer Usage**: **240,000 KV Reads / month** + **120,000 KV Writes / month**.
+Supabase provides **100% hard limit protection** (Spend Cap enabled by default on Pro, $0 credit card required on Free Tier):
 
-### Scenario C: Combined Monthly Heavy Streamer + 1,000 Viewers
-- **Total KV Writes**: 624,000 (uploads) + 120,000 (viewer stats) = **744,000 KV Writes / month** (74.4% of 1M included).
-- **Total KV Reads**: **240,000 KV Reads / month** (2.4% of 10M included).
-- **Total HTTP Requests**: **432,000 requests / month** (4.3% of 10M included).
-- **Total Monthly Cost**: **$5.00 / month flat** ($0 in overage fees).
+| Supabase Resource | Free Tier Limit | Pro Plan ($25/mo) | Overage Protection |
+| :--- | :--- | :--- | :--- |
+| **Data Ingress (Uploads)** | ♾️ **Unlimited ($0)** | ♾️ **Unlimited ($0)** | **$0 / Uncapped** (incoming data transfer is free). |
+| **Data Egress (Downloads)** | **5 GB / month** | **250 GB / month** | **Hard-stopped at limit** (HTTP 429) if Spend Cap enabled. Zero unexpected charges. |
+| **Edge Function Invocations**| **500,000 / month** | **2,000,000 / month** | Hard limit on Free; $2/1M on Pro (Spend Cap caps at budget). |
+| **Postgres Storage** | **500 MB** | **8 GB** | We use `UPSERT`, keeping total DB storage **< 5 MB forever**! |
+| **Data Retention** | **60 Days** (2 Months) | **60 Days** (2 Months) | Automated daily metrics pruning in Edge Function and PL/pgSQL function. |
 
 ---
 
-## 2. Cloudflare Quotas & Official Pricing
+### 2.2 Cloudflare KV & Workers Limits (Official Reference)
 
 Official Reference: [Cloudflare Workers KV Pricing Docs](https://developers.cloudflare.com/kv/platform/pricing/)
 
-### Free Plan vs Paid Plan ($5/month Base)
-
-| Cloudflare Resource | Free Plan (Daily Limits) | Paid Plan ($5/mo Base) | Overage Rate (After Base Included) |
+| Cloudflare Resource | Free Tier Limit | Paid Plan ($5/mo Base) | Behavioral Handling |
 | :--- | :--- | :--- | :--- |
-| **KV Writes** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million writes** |
-| **KV Reads** | **100,000 / day** | **10,000,000 / month included** | **$0.50 per 1 million reads** |
-| **KV Deletes** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million deletes** |
-| **List Requests** | **1,000 / day** | **1,000,000 / month included** | **$5.00 per 1 million lists** |
-| **Worker Requests** | **100,000 / day** | **10,000,000 / month included** | **$0.30 per 1 million requests** |
-| **Stored Data** | **1 GB total** | **1 GB included** | **$0.50 / GB-month** |
+| **Static Dashboard Assets**| ♾️ **Unlimited ($0)** | ♾️ **Unlimited ($0)** | Serves static HTML/JS/CSS with **0 KV reads/writes**. |
+| **KV Writes** | **1,000 / day** | **1,000,000 / month** | Returns `HTTP 429 KV Daily Limit Reached` on Free Tier when limit is hit. |
+| **KV Reads** | **100,000 / day** | **10,000,000 / month** | Returns cached payload metadata. |
+| **Worker Requests** | **100,000 / day** | **10,000,000 / month** | $0.30 / million requests after base. |
 
 ---
 
-## 3. Configuration & Overrides
+## 3. Capacity Benchmark Scenarios
 
-To tune application limits without modifying source code, edit the `[vars]` block in `worker/wrangler.toml`:
+### Scenario A: Intensive Streamer Upload Baseline (1 Upload every 2 seconds)
+- **Upload Frequency**: 1 upload / 2 seconds = 1,800 uploads / hour.
+- **Single Stream Session (8 hours)**: 14,400 uploads / session.
+- **Monthly Streamer Load (40 hrs / month)**: **312,000 uploads / month**.
+- **Supabase Cost**: **$0.00** (Edge function invocations: 312k of 500k free tier limit; ingress bandwidth: 100% free).
 
-```toml
-[vars]
-MAX_UPLOADS_PER_SEC = "10"
-MAX_UPLOADS_PER_DAY = "50000"
-MAX_PAYLOAD_BYTES   = "524288"   # 512 KB
-```
+### Scenario B: 1,000-Viewer Extension Overlay Usage
+- **Active Extension Viewers (25% adoption)**: 250 active extension viewers.
+- **Hover Rate**: 1 hover / 5 minutes = 12 reads / viewer / hour.
+- **Monthly Viewer Fetches (40 hrs / month stream)**: **120,000 viewer requests / month**.
+- **Payload Size**: ~5 KB compressed JSON.
+- **Monthly Egress Bandwidth**: 120,000 × 5 KB = **0.6 GB / month** (well under Supabase's 5 GB free egress limit!).
 
-After modifying `wrangler.toml`, deploy the updated environment variables via:
+### Scenario C: Combined Heavy Streamer + 1,000 Viewers
+- **Total Edge Function Calls**: 312,000 (uploads) + 120,000 (viewer GETs) = **432,000 calls / month** (86.4% of 500k free tier).
+- **Total Egress Bandwidth**: **~0.6 GB / month** (12% of 5 GB free tier).
+- **Total Ingress Bandwidth**: **~1.5 GB / month** (100% Free).
+- **Total Monthly Cost**: **$0.00 / month** (100% covered by free tiers).
 
-```bash
-npx wrangler deploy
-```
+---
+
+## 4. App Safety Controls & Data Retention
+
+| Control | Setting | Location |
+| :--- | :--- | :--- |
+| **Max Payload Size** | **512 KB** (`524,288` bytes) | Enforced in Edge Function and Cloudflare Worker. |
+| **Metrics Data Retention**| **60 Days (2 Months)** | Auto-pruned in `channel_stats` table by Edge Function and SQL function `cleanup_old_channel_stats()`. |
+| **Payload Storage Strategy**| **Zero-Bloat `UPSERT`** | `PRIMARY KEY (channel_id, game_id, file_key)` overwrites active run payload, keeping database size < 5 MB forever. |
+| **Dual-Backend Toggle** | `'supabase'` or `'cloudflare'` | Configurable in `dashboard/config.js` and `overlay.js`. |
