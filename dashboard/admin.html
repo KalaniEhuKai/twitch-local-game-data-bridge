@@ -312,6 +312,7 @@
     <div class="brand">
       <span>🛡️ TLGDB</span>
       <span class="badge-admin">Admin Portal</span>
+      <span style="font-size: 0.75rem; color: var(--text-dim); font-weight: 400; background: rgba(255, 255, 255, 0.05); padding: 0.2rem 0.5rem; border-radius: 4px;">Independent 3rd-Party</span>
     </div>
     <div class="header-actions">
       <a href="https://github.com/KalaniEhuKai/twitch-local-game-data-bridge" target="_blank" rel="noopener noreferrer" class="link-dash" title="View Source Code on GitHub" style="display: flex; align-items: center; gap: 0.35rem;">
@@ -326,6 +327,7 @@
   <main>
     <!-- Login Card (shown when unauthenticated) -->
     <div id="admin-auth-card" class="auth-card">
+      <div style="display: inline-block; background: rgba(148, 163, 184, 0.12); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px;">Independent 3rd-Party Tool</div>
       <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Admin Authentication</h2>
       <p style="color: var(--text-dim); font-size: 0.9rem;">Enter your <code>ADMIN_SECRET</code> key to access system metrics and manage registered streamers.</p>
       
@@ -339,6 +341,9 @@
           Unlock Admin Portal
         </button>
       </form>
+      <div style="margin-top: 1.25rem; font-size: 0.8rem; color: var(--text-dim); text-align: left; padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; line-height: 1.4;">
+        ℹ️ <strong>Third-Party Disclaimer:</strong> This portal is an independent administrative tool and is not created, operated, or endorsed by Twitch Interactive, Inc.
+      </div>
     </div>
 
     <!-- Admin Dashboard (shown when authenticated) -->
@@ -425,6 +430,16 @@
       </div>
     </div>
   </main>
+
+  <footer style="text-align: center; padding: 2rem 1rem; color: var(--text-dim, #94a3b8); font-size: 0.85rem; border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+    <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; flex-wrap: wrap;">
+      <span>TLGDB Admin Portal</span> &bull; 
+      <a href="index.html" style="color: #38bdf8; text-decoration: none; font-weight: 500;">← Main Dashboard</a>
+    </div>
+    <p style="font-size: 0.78rem; max-width: 650px; line-height: 1.4; opacity: 0.75;">
+      This website is an independent open-source project and is not affiliated with, authorized, maintained, sponsored, or endorsed by Twitch Interactive, Inc.
+    </p>
+  </footer>
 
   <script src="config.js"></script>
   <script src="admin.js"></script>
