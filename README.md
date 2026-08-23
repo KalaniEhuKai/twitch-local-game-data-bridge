@@ -3,6 +3,12 @@
 A zero-cost to streamer pipeline that reads local game files from a streamer's PC
 and makes the data available at a stable URL so Twitch extensions can access it.
 
+> [!NOTE]
+> **Third-Party & Unofficial Project Disclaimer**:
+> This software is an independent, third-party open-source utility developed by community members. It is **not** affiliated with, endorsed by, sponsored by, or officially associated with Guild Run, Twitch Interactive, Cloudflare, Supabase, or any game developers or publishers. All trademarks, game titles, and logos belong to their respective owners.
+
+---
+
 ## How it Works
 
 ```
