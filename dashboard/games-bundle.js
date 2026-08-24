@@ -1140,25 +1140,28 @@
           for (let i = 0; i < bytes.length; i += chunkSize) {
             binaryStr += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
           }
-          if (decodeFunc) {
+          const decoder = getDecoder();
+          if (decoder) {
             try {
-              const root = decodeFunc(bytes);
-              if (root && root.Payload) {
-                const payload = decodeFunc(root.Payload);
+              const root = decoder(bytes);
+              if (root) {
+                const payload = root.Payload ? decoder(root.Payload) : root;
                 return {
                   content: JSON.stringify({
                     BridgeSchemaVersion: "1.1.0",
-                    Version: root.Version,
-                    ScopeIndex: root.ScopeIndex,
-                    DifficultyIndex: root.DifficultyIndex,
-                    IsChallengeModeEnabled: root.IsChallengeModeEnabled,
+                    Version: root.Version || 1,
+                    ScopeIndex: root.ScopeIndex || 0,
+                    DifficultyIndex: root.DifficultyIndex || 0,
+                    IsChallengeModeEnabled: root.IsChallengeModeEnabled || false,
                     ...payload,
                     ProfileDto: profileDto
                   }),
                   fileName: "Run"
                 };
               }
-            } catch {}
+            } catch (decErr) {
+              console.warn("[GuildRun] Error decoding Run file:", decErr);
+            }
           }
           return { content: binaryStr, fileName: "Run" };
         } catch (err) {
