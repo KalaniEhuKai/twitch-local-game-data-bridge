@@ -1009,17 +1009,38 @@
 
         try {
           if (dirItem.type === "directory" && dirItem.handle) {
-            try {
-              for await (const entry of dirItem.handle.values()) {
-                if (entry.kind === "file") {
-                  const lower = entry.name.toLowerCase();
-                  if (lower === "run") runFile = await entry.getFile();
-                  else if (lower === "profile") profileFile = await entry.getFile();
+            const runNames = ["Run", "run", "RUN"];
+            for (const name of runNames) {
+              try {
+                const h = await dirItem.handle.getFileHandle(name);
+                runFile = await h.getFile();
+                if (runFile) break;
+              } catch {}
+            }
+
+            const profileNames = ["Profile", "profile", "PROFILE"];
+            for (const name of profileNames) {
+              try {
+                const h = await dirItem.handle.getFileHandle(name);
+                profileFile = await h.getFile();
+                if (profileFile) break;
+              } catch {}
+            }
+
+            if ((!runFile || !profileFile) && typeof dirItem.handle.values === "function") {
+              try {
+                for await (const entry of dirItem.handle.values()) {
+                  if (entry && entry.kind === "file" && entry.name) {
+                    const lower = entry.name.toLowerCase();
+                    if (!runFile && lower === "run") {
+                      try { runFile = await entry.getFile(); } catch {}
+                    }
+                    if (!profileFile && lower === "profile") {
+                      try { profileFile = await entry.getFile(); } catch {}
+                    }
+                  }
                 }
-              }
-            } catch {
-              try { runFile = await dirItem.handle.getFileHandle("Run").then((h) => h.getFile()); } catch {}
-              try { profileFile = await dirItem.handle.getFileHandle("Profile").then((h) => h.getFile()); } catch {}
+              } catch {}
             }
           } else if (dirItem.type === "directory-entry" && dirItem.entry) {
             try {
@@ -1049,16 +1070,21 @@
           }
         } catch {}
 
-        const decodeFunc = typeof MessagePack !== "undefined" && typeof MessagePack.decode === "function" ? MessagePack.decode : typeof window !== "undefined" && window.MessagePack && window.MessagePack.decode;
+        function getDecoder() {
+          if (typeof MessagePack !== "undefined" && typeof MessagePack.decode === "function") return MessagePack.decode;
+          if (typeof window !== "undefined" && window.MessagePack && typeof window.MessagePack.decode === "function") return window.MessagePack.decode;
+          return null;
+        }
 
         async function parseProfileDto(pFile) {
-          if (!pFile || !decodeFunc) return null;
+          const decoder = getDecoder();
+          if (!pFile || !decoder) return null;
           try {
             const pBuffer = await pFile.arrayBuffer();
             const pBytes = new Uint8Array(pBuffer);
-            const pRoot = decodeFunc(pBytes);
+            const pRoot = decoder(pBytes);
             if (pRoot) {
-              const pData = pRoot.Payload ? decodeFunc(pRoot.Payload) : pRoot;
+              const pData = pRoot.Payload ? decoder(pRoot.Payload) : pRoot;
               const prog = pData.Progression || {};
               const history = prog.DemoChallengeRunHistory || prog.ChallengeRunHistory || [];
               
