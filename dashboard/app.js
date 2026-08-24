@@ -693,6 +693,7 @@ async function processFile(fileDef, item) {
 
       if (isGuildRun && (isNotFoundError || err.name === 'NotFoundError')) {
         rawContent = JSON.stringify({
+          BridgeSchemaVersion: '1.1.0',
           status: 'no_file_found',
           message: 'No active run file found',
           timestamp: new Date().toISOString()
