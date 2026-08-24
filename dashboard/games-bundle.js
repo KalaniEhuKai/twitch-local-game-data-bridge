@@ -1010,35 +1010,40 @@
         try {
           if (dirItem.type === "directory" && dirItem.handle) {
             try {
-              const runHandle = await dirItem.handle.getFileHandle("Run");
-              runFile = await runHandle.getFile();
-            } catch {}
-            try {
-              const profileHandle = await dirItem.handle.getFileHandle("Profile");
-              profileFile = await profileHandle.getFile();
-            } catch {}
+              for await (const entry of dirItem.handle.values()) {
+                if (entry.kind === "file") {
+                  const lower = entry.name.toLowerCase();
+                  if (lower === "run") runFile = await entry.getFile();
+                  else if (lower === "profile") profileFile = await entry.getFile();
+                }
+              }
+            } catch {
+              try { runFile = await dirItem.handle.getFileHandle("Run").then((h) => h.getFile()); } catch {}
+              try { profileFile = await dirItem.handle.getFileHandle("Profile").then((h) => h.getFile()); } catch {}
+            }
           } else if (dirItem.type === "directory-entry" && dirItem.entry) {
             try {
-              const entries = await new Promise((resolve) => {
-                const dirReader = dirItem.entry.createReader();
-                dirReader.readEntries((res) => resolve(res || []), () => resolve([]));
-              });
-              const runEntry = entries.find((e) => e.isFile && e.name === "Run");
-              const profileEntry = entries.find((e) => e.isFile && e.name === "Profile");
-              if (runEntry) {
-                runFile = await new Promise((res) => runEntry.file((f) => res(f), () => res(null)));
-              }
-              if (profileEntry) {
-                profileFile = await new Promise((res) => profileEntry.file((f) => res(f), () => res(null)));
-              }
+              const entries = [];
+              const dirReader = dirItem.entry.createReader();
+              let batch;
+              do {
+                batch = await new Promise((res) => dirReader.readEntries((r) => res(r || []), () => res([])));
+                if (batch && batch.length) entries.push(...batch);
+              } while (batch && batch.length > 0);
+
+              const runEntry = entries.find((e) => e.isFile && e.name && e.name.toLowerCase() === "run");
+              const profileEntry = entries.find((e) => e.isFile && e.name && e.name.toLowerCase() === "profile");
+              if (runEntry) runFile = await new Promise((res) => runEntry.file((f) => res(f), () => res(null)));
+              if (profileEntry) profileFile = await new Promise((res) => profileEntry.file((f) => res(f), () => res(null)));
             } catch {}
           } else if (dirItem.type === "directory-fallback" && Array.isArray(dirItem.allFiles)) {
-            runFile = dirItem.allFiles.find((f) => f.name === "Run") || null;
-            profileFile = dirItem.allFiles.find((f) => f.name === "Profile") || null;
+            runFile = dirItem.allFiles.find((f) => f.name && f.name.toLowerCase() === "run") || null;
+            profileFile = dirItem.allFiles.find((f) => f.name && f.name.toLowerCase() === "profile") || null;
           } else if (dirItem.file || dirItem.name) {
-            if (dirItem.name === "Run" || dirItem.file?.name === "Run") {
+            const lowerName = (dirItem.name || dirItem.file?.name || "").toLowerCase();
+            if (lowerName === "run" || lowerName.endsWith("/run")) {
               runFile = dirItem.file || dirItem;
-            } else if (dirItem.name === "Profile" || dirItem.file?.name === "Profile") {
+            } else if (lowerName === "profile" || lowerName.endsWith("/profile")) {
               profileFile = dirItem.file || dirItem;
             }
           }
