@@ -30,6 +30,18 @@ File System Access API
 
 ---
 
+## Schema Versioning & Backwards Compatibility Policy
+
+> [!IMPORTANT]
+> **Payload Schema Versioning Protocol**:
+> 1. **`BridgeSchemaVersion` Field**: All uploaded JSON payloads must include a top-level `"BridgeSchemaVersion"` string (e.g., `"1.1.0"`).
+> 2. **Incrementing Version**: Whenever new DTO objects, fields, or structural payload changes are made, developers **must** increment `BridgeSchemaVersion`.
+> 3. **Handling Breaking Changes**: Extension overlays should check `data.BridgeSchemaVersion` to handle schema migrations and backwards-incompatible payload changes gracefully.
+> 4. **Status String Migration Rule**:
+>    To maintain 100% backwards compatibility with legacy extension overlays in production, the status string remains `"no_file_found"` even when only `Profile` data is present without an active `Run` file. In the future, once v1.1.0+ extension builds are deployed to 100% of production users, the backend status string can transition to distinguish `"no_active_run"` (Profile found, no Run) vs `"no_file_found"` (no files found).
+
+---
+
 # Development Info
 
 ## Prerequisites
