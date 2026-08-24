@@ -1052,8 +1052,8 @@
             const pBuffer = await pFile.arrayBuffer();
             const pBytes = new Uint8Array(pBuffer);
             const pRoot = decodeFunc(pBytes);
-            if (pRoot && pRoot.Payload) {
-              const pData = decodeFunc(pRoot.Payload);
+            if (pRoot) {
+              const pData = pRoot.Payload ? decodeFunc(pRoot.Payload) : pRoot;
               const prog = pData.Progression || {};
               const history = prog.DemoChallengeRunHistory || prog.ChallengeRunHistory || [];
               
