@@ -37,11 +37,17 @@ const guildRun = {
   async processDirectory(fileKey, dirItem) {
     if (!dirItem) return null;
 
-    // NOTE: Long-term, a separate status endpoint (e.g. GET/POST /status) would be cleaner,
-    // but sending status in the main data payload avoids additional HTTP overhead & bandwidth currently.
-    const noRunPayload = JSON.stringify({
+    // NOTE FOR FUTURE MAINTAINERS & DEVELOPERS:
+    // 1. SCHEMA VERSIONING: Always increment BridgeSchemaVersion (e.g. '1.1.0') when modifying or adding schema keys.
+    // 2. BACKWARDS COMPATIBILITY: In the future, once the updated Twitch extension overlay code (v1.1.0+) is 100% deployed
+    //    in production to all viewers, we can change the status string to distinguish "no_active_run" (Profile found, no Run file)
+    //    vs "no_file_found" (no save files found at all). Currently, we keep status as "no_file_found" to guarantee 100%
+    //    backwards compatibility with older extension overlay builds.
+    const createNoRunPayload = (profileDto = null) => JSON.stringify({
+      BridgeSchemaVersion: '1.1.0',
       status: 'no_file_found',
-      message: 'No active run file found'
+      message: 'No active run file found',
+      ProfileDto: profileDto
     });
 
     let runFile = null;
@@ -52,9 +58,7 @@ const guildRun = {
         try {
           const runHandle = await dirItem.handle.getFileHandle('Run');
           runFile = await runHandle.getFile();
-        } catch {
-          return { content: noRunPayload, fileName: 'No Active Run' };
-        }
+        } catch { }
         try {
           const profileHandle = await dirItem.handle.getFileHandle('Profile');
           profileFile = await profileHandle.getFile();
@@ -69,34 +73,82 @@ const guildRun = {
           const profileEntry = entries.find(e => e.isFile && e.name === 'Profile');
           if (runEntry) {
             runFile = await new Promise(res => runEntry.file(f => res(f), () => res(null)));
-          } else {
-            return { content: noRunPayload, fileName: 'No Active Run' };
           }
           if (profileEntry) {
             profileFile = await new Promise(res => profileEntry.file(f => res(f), () => res(null)));
           }
-        } catch {
-          return { content: noRunPayload, fileName: 'No Active Run' };
-        }
+        } catch { }
       } else if (dirItem.type === 'directory-fallback' && Array.isArray(dirItem.allFiles)) {
         runFile = dirItem.allFiles.find(f => f.name === 'Run') || null;
         profileFile = dirItem.allFiles.find(f => f.name === 'Profile') || null;
-        if (!runFile) {
-          return { content: noRunPayload, fileName: 'No Active Run' };
-        }
       } else if (dirItem.file || dirItem.name) {
         if (dirItem.name === 'Run' || dirItem.file?.name === 'Run') {
           runFile = dirItem.file || dirItem;
-        } else {
-          return { content: noRunPayload, fileName: 'No Active Run' };
+        } else if (dirItem.name === 'Profile' || dirItem.file?.name === 'Profile') {
+          profileFile = dirItem.file || dirItem;
         }
       }
-    } catch {
-      return { content: noRunPayload, fileName: 'No Active Run' };
+    } catch { }
+
+    // Helper for MessagePack decoding
+    const decodeFunc = (typeof MessagePack !== 'undefined' && typeof MessagePack.decode === 'function')
+      ? MessagePack.decode
+      : (typeof window !== 'undefined' && window.MessagePack && window.MessagePack.decode);
+
+    // Helper to decode ProfileDto from Profile file
+    async function parseProfileDto(pFile) {
+      if (!pFile || !decodeFunc) return null;
+      try {
+        const pBuffer = await pFile.arrayBuffer();
+        const pBytes = new Uint8Array(pBuffer);
+        const pRoot = decodeFunc(pBytes);
+        if (pRoot && pRoot.Payload) {
+          const pData = decodeFunc(pRoot.Payload);
+          const prog = pData.Progression || {};
+          const history = prog.DemoChallengeRunHistory || prog.ChallengeRunHistory || [];
+          
+          let currentStreak = 0;
+          for (let i = history.length - 1; i >= 0; i--) {
+            const guid = history[i];
+            if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
+              currentStreak++;
+            } else {
+              break;
+            }
+          }
+
+          let bestStreak = 0;
+          let tempStreak = 0;
+          for (let i = 0; i < history.length; i++) {
+            const guid = history[i];
+            if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
+              tempStreak++;
+              if (tempStreak > bestStreak) {
+                bestStreak = tempStreak;
+              }
+            } else {
+              tempStreak = 0;
+            }
+          }
+
+          return {
+            CurrentStreak: currentStreak,
+            BestStreak: bestStreak,
+            TotalStartedRuns: prog.TotalStartedRuns || 0,
+            TotalRunsBeaten: prog.TotalRunsBeaten || 0,
+            HighestDifficultyBeaten: prog.HighestDifficultyBeaten || 0
+          };
+        }
+      } catch (pErr) {
+        console.warn('[GuildRun] Error parsing Profile file:', pErr);
+      }
+      return null;
     }
 
+    const profileDto = await parseProfileDto(profileFile);
+
     if (!runFile) {
-      return { content: noRunPayload, fileName: 'No Active Run' };
+      return { content: createNoRunPayload(profileDto), fileName: 'No Active Run' };
     }
 
     try {
@@ -108,68 +160,14 @@ const guildRun = {
         binaryStr += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
       }
 
-      // Try MessagePack decode if available
-      const decodeFunc = (typeof MessagePack !== 'undefined' && typeof MessagePack.decode === 'function')
-        ? MessagePack.decode
-        : (typeof window !== 'undefined' && window.MessagePack && window.MessagePack.decode);
-
       if (decodeFunc) {
         try {
           const root = decodeFunc(bytes);
           if (root && root.Payload) {
             const payload = decodeFunc(root.Payload);
-
-            // Process optional Profile file to compute ProfileDto (CurrentStreak, BestStreak)
-            let profileDto = null;
-            if (profileFile) {
-              try {
-                const pBuffer = await profileFile.arrayBuffer();
-                const pBytes = new Uint8Array(pBuffer);
-                const pRoot = decodeFunc(pBytes);
-                if (pRoot && pRoot.Payload) {
-                  const pData = decodeFunc(pRoot.Payload);
-                  const prog = pData.Progression || {};
-                  const history = prog.DemoChallengeRunHistory || prog.ChallengeRunHistory || [];
-                  
-                  let currentStreak = 0;
-                  for (let i = history.length - 1; i >= 0; i--) {
-                    const guid = history[i];
-                    if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
-                      currentStreak++;
-                    } else {
-                      break;
-                    }
-                  }
-
-                  let bestStreak = 0;
-                  let tempStreak = 0;
-                  for (let i = 0; i < history.length; i++) {
-                    const guid = history[i];
-                    if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
-                      tempStreak++;
-                      if (tempStreak > bestStreak) {
-                        bestStreak = tempStreak;
-                      }
-                    } else {
-                      tempStreak = 0;
-                    }
-                  }
-
-                  profileDto = {
-                    CurrentStreak: currentStreak,
-                    BestStreak: bestStreak,
-                    TotalStartedRuns: prog.TotalStartedRuns || 0,
-                    TotalRunsBeaten: prog.TotalRunsBeaten || 0,
-                    HighestDifficultyBeaten: prog.HighestDifficultyBeaten || 0
-                  };
-                }
-              } catch (pErr) {
-                console.warn('[GuildRun] Error parsing Profile file:', pErr);
-              }
-            }
-
             return {
               content: JSON.stringify({
+                BridgeSchemaVersion: '1.1.0',
                 Version: root.Version,
                 ScopeIndex: root.ScopeIndex,
                 DifficultyIndex: root.DifficultyIndex,
@@ -187,7 +185,7 @@ const guildRun = {
     } catch (err) {
       const isLockError = err.name === 'NotReadableError' || err.name === 'NotAllowedError' || err.name === 'SecurityError';
       if (isLockError) throw err;
-      return { content: noRunPayload, fileName: 'No Active Run' };
+      return { content: createNoRunPayload(profileDto), fileName: 'No Active Run' };
     }
   },
 };
