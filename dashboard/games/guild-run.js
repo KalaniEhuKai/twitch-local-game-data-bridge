@@ -45,6 +45,7 @@ const guildRun = {
     });
 
     let runFile = null;
+    let profileFile = null;
 
     try {
       if (dirItem.type === 'directory' && dirItem.handle) {
@@ -54,6 +55,10 @@ const guildRun = {
         } catch {
           return { content: noRunPayload, fileName: 'No Active Run' };
         }
+        try {
+          const profileHandle = await dirItem.handle.getFileHandle('Profile');
+          profileFile = await profileHandle.getFile();
+        } catch { }
       } else if (dirItem.type === 'directory-entry' && dirItem.entry) {
         try {
           const entries = await new Promise((resolve) => {
@@ -61,16 +66,21 @@ const guildRun = {
             dirReader.readEntries(res => resolve(res || []), () => resolve([]));
           });
           const runEntry = entries.find(e => e.isFile && e.name === 'Run');
+          const profileEntry = entries.find(e => e.isFile && e.name === 'Profile');
           if (runEntry) {
             runFile = await new Promise(res => runEntry.file(f => res(f), () => res(null)));
           } else {
             return { content: noRunPayload, fileName: 'No Active Run' };
+          }
+          if (profileEntry) {
+            profileFile = await new Promise(res => profileEntry.file(f => res(f), () => res(null)));
           }
         } catch {
           return { content: noRunPayload, fileName: 'No Active Run' };
         }
       } else if (dirItem.type === 'directory-fallback' && Array.isArray(dirItem.allFiles)) {
         runFile = dirItem.allFiles.find(f => f.name === 'Run') || null;
+        profileFile = dirItem.allFiles.find(f => f.name === 'Profile') || null;
         if (!runFile) {
           return { content: noRunPayload, fileName: 'No Active Run' };
         }
@@ -108,13 +118,64 @@ const guildRun = {
           const root = decodeFunc(bytes);
           if (root && root.Payload) {
             const payload = decodeFunc(root.Payload);
+
+            // Process optional Profile file to compute ProfileDto (CurrentStreak, BestStreak)
+            let profileDto = null;
+            if (profileFile) {
+              try {
+                const pBuffer = await profileFile.arrayBuffer();
+                const pBytes = new Uint8Array(pBuffer);
+                const pRoot = decodeFunc(pBytes);
+                if (pRoot && pRoot.Payload) {
+                  const pData = decodeFunc(pRoot.Payload);
+                  const prog = pData.Progression || {};
+                  const history = prog.DemoChallengeRunHistory || prog.ChallengeRunHistory || [];
+                  
+                  let currentStreak = 0;
+                  for (let i = history.length - 1; i >= 0; i--) {
+                    const guid = history[i];
+                    if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
+                      currentStreak++;
+                    } else {
+                      break;
+                    }
+                  }
+
+                  let bestStreak = 0;
+                  let tempStreak = 0;
+                  for (let i = 0; i < history.length; i++) {
+                    const guid = history[i];
+                    if (guid && guid !== '00000000-0000-0000-0000-000000000000') {
+                      tempStreak++;
+                      if (tempStreak > bestStreak) {
+                        bestStreak = tempStreak;
+                      }
+                    } else {
+                      tempStreak = 0;
+                    }
+                  }
+
+                  profileDto = {
+                    CurrentStreak: currentStreak,
+                    BestStreak: bestStreak,
+                    TotalStartedRuns: prog.TotalStartedRuns || 0,
+                    TotalRunsBeaten: prog.TotalRunsBeaten || 0,
+                    HighestDifficultyBeaten: prog.HighestDifficultyBeaten || 0
+                  };
+                }
+              } catch (pErr) {
+                console.warn('[GuildRun] Error parsing Profile file:', pErr);
+              }
+            }
+
             return {
               content: JSON.stringify({
                 Version: root.Version,
                 ScopeIndex: root.ScopeIndex,
                 DifficultyIndex: root.DifficultyIndex,
                 IsChallengeModeEnabled: root.IsChallengeModeEnabled,
-                ...payload
+                ...payload,
+                ProfileDto: profileDto
               }),
               fileName: 'Run'
             };
